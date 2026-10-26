@@ -1,5 +1,5 @@
 [workspace]
-members = ["lez-admin-authority", "sample", "sample/core", "sample/runner"]
+members = ["lez-admin-authority", "sample", "sample/core", "sample/runner", "sample-minimal"]
 resolver = "2"
 
 [workspace.package]
