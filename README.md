@@ -9,3 +9,12 @@ The v0.2.4 line lives in [spel-admin-authority](https://github.com/mmlado/spel-a
 ## License
 
 Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE2) at the consumer's option.
+
+## Developing against a local lez-authority
+
+The workspace pins `lez-authority` to a commit on GitHub. To build against the sibling checkout instead, add an untracked `.cargo/config.toml`:
+
+```toml
+[patch."https://github.com/mmlado/lez-authority"]
+lez-authority = { path = "../lez-authority" }
+```

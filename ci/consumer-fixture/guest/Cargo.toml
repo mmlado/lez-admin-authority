@@ -1,0 +1,18 @@
+[package]
+name = "consumer-fixture-guest"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "consumer_fixture"
+path = "src/bin/consumer_fixture.rs"
+
+[dependencies]
+borsh = { version = "1", features = ["derive"] }
+lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
+# Pinned to a tag once there is one. Until then the branch head, with the exact commit in Cargo.lock.
+lez-admin-authority = { git = "https://github.com/mmlado/lez-admin-authority", branch = "main" }
+risc0-zkvm = { version = "=3.0.5", default-features = false, features = ["std"] }
