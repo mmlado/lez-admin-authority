@@ -1,5 +1,5 @@
 [workspace]
-members = ["lez-admin-authority", "sample", "sample/core"]
+members = ["lez-admin-authority", "sample", "sample/core", "sample/runner"]
 resolver = "2"
 
 [workspace.package]
@@ -13,3 +13,5 @@ lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", r
 # Path until lez-authority has a tag to pin.
 lez-authority = { path = "../lez-authority" }
 lez-admin-authority = { path = "lez-admin-authority" }
+wallet = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
+program_loader_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
