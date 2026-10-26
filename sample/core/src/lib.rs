@@ -39,7 +39,8 @@ pub enum Message {
     SetOpenValue(u64),
     /// The admin only.
     SetAdminValue(u64),
-    /// `Init` makes the sender the admin, `Renounce` gives the role up for good.
+    /// `Init` makes the sender the admin, `Nominate` and `Accept` hand the role over,
+    /// `Renounce` gives it up for good.
     Admin(AdminOp),
     /// The hop from the sender's own actor to the config. Clients never send it.
     Forwarded(Forwarded),

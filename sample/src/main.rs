@@ -59,7 +59,24 @@ mod tests {
     }
 
     fn held(account: AccountId, via: Option<AccountId>) -> AuthoritySlot {
-        AuthoritySlot::Held(Holder { account, via })
+        AuthoritySlot::held(Holder { account, via })
+    }
+
+    fn held_with_nominee(nominee: AccountId) -> AuthoritySlot {
+        AuthoritySlot::Held {
+            holder: Holder {
+                account: DEPLOYER,
+                via: None,
+            },
+            nominee: Some(nominee),
+        }
+    }
+
+    fn nominated() -> Config {
+        Config {
+            admin: held_with_nominee(STRANGER),
+            ..initialized()
+        }
     }
 
     fn initialized() -> Config {
@@ -341,6 +358,108 @@ mod tests {
             ..initialized()
         };
         let _transition = through_seat(DEPLOYER, None, true, bytes(&pre), Message::Admin(AdminOp::Init));
+    }
+
+    #[test]
+    fn the_admin_nominates_and_nothing_moves_yet() {
+        let message = Message::Admin(AdminOp::Nominate { next: STRANGER });
+        let transition = through_seat(DEPLOYER, None, true, bytes(&initialized()), message);
+        assert_eq!(written(&transition), nominated());
+
+        let early = std::panic::catch_unwind(|| {
+            through_seat(STRANGER, None, true, bytes(&nominated()), Message::SetAdminValue(1))
+        });
+        assert!(early.is_err(), "the nominee cannot act before accepting");
+    }
+
+    #[test]
+    #[should_panic(expected = "the signing account is not the admin")]
+    fn a_stranger_cannot_nominate() {
+        let message = Message::Admin(AdminOp::Nominate { next: STRANGER });
+        let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), message);
+    }
+
+    #[test]
+    fn the_nominee_accepts_and_the_old_admin_is_out() {
+        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let transition = through_seat(STRANGER, None, true, bytes(&nominated()), accept);
+        let handed_over = Config {
+            admin: held(STRANGER, None),
+            ..initialized()
+        };
+        assert_eq!(written(&transition), handed_over);
+
+        let old = std::panic::catch_unwind(|| {
+            through_seat(DEPLOYER, None, true, bytes(&handed_over), Message::SetAdminValue(2))
+        });
+        assert!(old.is_err(), "the old admin is refused after the handover");
+        let new = through_seat(STRANGER, None, true, bytes(&handed_over), Message::SetAdminValue(3));
+        assert_eq!(written(&new).admin_value, 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "no admin nominee is pending")]
+    fn accept_without_a_nomination_is_refused() {
+        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), accept);
+    }
+
+    #[test]
+    #[should_panic(expected = "the signing account is not the nominated admin")]
+    fn only_the_nominee_accepts() {
+        let other = AccountId::new([7; 32]);
+        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let _transition = through_seat(other, None, true, bytes(&nominated()), accept);
+    }
+
+    #[test]
+    fn a_pda_nominee_accepts_through_its_program_with_the_seed() {
+        let seed = lez_admin_authority::seed(b"vault");
+        let vault = AccountId::new(*b"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+        let pda = AccountId::for_public_pda(&GOVERNANCE, &seed);
+        let pre = Config {
+            admin: held_with_nominee(pda),
+            ..initialized()
+        };
+        let accept = Message::Admin(AdminOp::Accept { pda_seed: Some(seed) });
+        let governance = Actor::new(vault, GOVERNANCE);
+        let transition = through_seat(pda, Some(governance), true, bytes(&pre), accept);
+        assert_eq!(written(&transition).admin, held(pda, Some(GOVERNANCE)));
+    }
+
+    #[test]
+    #[should_panic(expected = "must prove itself with the seed")]
+    fn a_pda_nominee_without_the_seed_is_refused() {
+        let pda = AccountId::for_public_pda(&GOVERNANCE, &lez_admin_authority::seed(b"vault"));
+        let pre = Config {
+            admin: held_with_nominee(pda),
+            ..initialized()
+        };
+        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let governance = Actor::new(STRANGER, GOVERNANCE);
+        let _transition = through_seat(pda, Some(governance), true, bytes(&pre), accept);
+    }
+
+    #[test]
+    fn a_nomination_can_be_cancelled_and_replaced() {
+        let cancel = Message::Admin(AdminOp::Nominate { next: AccountId::default() });
+        let transition = through_seat(DEPLOYER, None, true, bytes(&nominated()), cancel);
+        assert_eq!(written(&transition), initialized());
+
+        let other = AccountId::new([7; 32]);
+        let replace = Message::Admin(AdminOp::Nominate { next: other });
+        let transition = through_seat(DEPLOYER, None, true, bytes(&nominated()), replace);
+        assert_eq!(written(&transition).admin.nominee(), Some(other));
+    }
+
+    #[test]
+    #[should_panic(expected = "the admin is renounced")]
+    fn renounce_drops_the_nomination_too() {
+        let transition =
+            through_seat(DEPLOYER, None, true, bytes(&nominated()), Message::Admin(AdminOp::Renounce));
+        assert_eq!(written(&transition).admin, AuthoritySlot::Renounced);
+        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let _transition = through_seat(STRANGER, None, true, bytes(&written(&transition)), accept);
     }
 
     #[test]

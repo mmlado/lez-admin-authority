@@ -1,5 +1,6 @@
 //! Single-admin authority for LEZ actor programs: one admin per program, installed by
-//! the hosted `Init` operation, renounceable, checked wherever the program asks.
+//! the hosted `Init` operation, handed over by `Nominate` and `Accept`, renounceable,
+//! checked wherever the program asks.
 //!
 //! The hop and the slot check live in `lez-authority`. This crate names the role and
 //! gives the program a context with admin-named methods.
@@ -13,8 +14,8 @@ pub use lez_authority::{
     config_account, seed,
 };
 
-/// The operations the program hosts in its message enum: `Init` and `Renounce`. The guard
-/// runs them, the handler never sees them.
+/// The operations the program hosts in its message enum: `Init`, `Nominate`, `Accept` and
+/// `Renounce`. The guard runs them, the handler never sees them.
 pub use lez_authority::Op as AdminOp;
 
 /// The admin role. One holder, renounce is terminal.
@@ -47,7 +48,18 @@ impl Ctx<'_> {
         self.0.install(slot);
     }
 
-    /// Empties the slot for good. The sender must be the admin.
+    /// The sender, who must be the admin, offers the role to `next`. The all-zero id cancels.
+    pub fn nominate(&mut self, slot: &mut AuthoritySlot, next: lee_core::account::AccountId) {
+        self.0.nominate(slot, next);
+    }
+
+    /// The sender, who must be the pending nominee, takes the role. A key at top level needs
+    /// no seed. A PDA reached through its program carries the seed that derives it there.
+    pub fn accept(&mut self, slot: &mut AuthoritySlot, pda_seed: Option<PdaSeed>) {
+        self.0.accept(slot, pda_seed);
+    }
+
+    /// Empties the slot for good, nominee included. The sender must be the admin.
     pub fn renounce(&mut self, slot: &mut AuthoritySlot) {
         self.0.renounce(slot);
     }
