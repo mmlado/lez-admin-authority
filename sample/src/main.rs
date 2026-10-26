@@ -1,4 +1,5 @@
-//! Sample program: two values, two setters, one of them for the admin only.
+//! Sample program: two values on the config, two setters, one of them for the admin only,
+//! and a per-account value the admin sets through the hub.
 //!
 //! The config lives on the config account, a PDA of the program id and `CONFIG_SEED`.
 //! Messages that need the admin go to the sender's own actor first, which vouches for
@@ -13,7 +14,7 @@
 
 use lee_core::program::{ReceiveInput, Response};
 use lez_admin_authority::{Ctx, InitGate};
-use sample_core::{CONFIG_SEED, Config, Message};
+use sample_core::{CONFIG_SEED, Config, Message, TargetState};
 
 fn handle_message(ctx: &mut Ctx, config: &mut Config, message: Message) {
     match message {
@@ -22,14 +23,34 @@ fn handle_message(ctx: &mut Ctx, config: &mut Config, message: Message) {
             ctx.require_admin(&config.admin);
             config.admin_value = value;
         }
-        Message::Admin(_) | Message::Forwarded(_) => {
+        Message::SetTargetValue { target, value } => {
+            ctx.require_admin(&config.admin);
+            ctx.send(target, &Message::TargetValue(value));
+        }
+        Message::TargetValue(_) => panic!("TargetValue reaches a target through the hub only"),
+        Message::Admin(_) | Message::Forwarded(_) | Message::Hub(_) => {
             unreachable!("the guard handles the library's variants")
         }
     }
 }
 
+/// At a target, for what the config sent through the hub.
+fn handle_target(state: &mut TargetState, message: Message) {
+    match message {
+        Message::TargetValue(value) => state.value = value,
+        other => panic!("not a target message: {other:?}"),
+    }
+}
+
 fn entry(input: &ReceiveInput, message: Message) -> Response {
-    lez_admin_authority::guard(input, &CONFIG_SEED, InitGate::Deployer, message, handle_message)
+    lez_admin_authority::guard_with_targets(
+        input,
+        &CONFIG_SEED,
+        InitGate::Deployer,
+        message,
+        handle_message,
+        handle_target,
+    )
 }
 
 lee_core::actor_entrypoint!(entry);
@@ -40,7 +61,7 @@ mod tests {
         account::{AccountId, Actor, ActorState},
         program::{SyncMessage, Transition},
     };
-    use lez_admin_authority::{AdminOp, AuthoritySlot, Forwarded, Holder};
+    use lez_admin_authority::{AdminOp, AuthoritySlot, Forwarded, Holder, Hub};
     use sample_core::config_account;
 
     use super::*;
@@ -494,6 +515,89 @@ mod tests {
         assert_eq!(written(&transition).admin, AuthoritySlot::Renounced);
         let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
         let _transition = through_seat(STRANGER, None, true, bytes(&written(&transition)), accept);
+    }
+
+    fn hub(message: &Message) -> Message {
+        Message::Hub(Hub {
+            inner: borsh::to_vec(message).unwrap(),
+        })
+    }
+
+    #[test]
+    fn the_admin_sets_a_target_value_through_the_hub() {
+        let message = Message::SetTargetValue {
+            target: STRANGER,
+            value: 5,
+        };
+        let at_config = through_seat(DEPLOYER, None, true, bytes(&initialized()), message);
+        assert_eq!(written(&at_config), initialized(), "the config itself is unchanged");
+        let expected = SyncMessage::new(actor(STRANGER), &hub(&Message::TargetValue(5)));
+        assert_eq!(at_config.response.sync_messages, vec![expected]);
+
+        let at_target = run(
+            actor(STRANGER),
+            Some(config_actor()),
+            false,
+            Vec::new(),
+            hub(&Message::TargetValue(5)),
+        );
+        let state: TargetState =
+            borsh::from_slice(at_target.response.post_state.as_ref().unwrap()).unwrap();
+        assert_eq!(state, TargetState { value: 5 });
+    }
+
+    #[test]
+    #[should_panic(expected = "the signing account is not the admin")]
+    fn a_stranger_cannot_reach_a_target() {
+        let message = Message::SetTargetValue {
+            target: STRANGER,
+            value: 5,
+        };
+        let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), message);
+    }
+
+    #[test]
+    #[should_panic(expected = "a hub message comes only from the config account")]
+    fn a_hub_message_sent_straight_to_a_target_is_refused() {
+        let _transition = run(actor(STRANGER), None, false, Vec::new(), hub(&Message::TargetValue(5)));
+    }
+
+    #[test]
+    #[should_panic(expected = "a hub message comes only from the config account")]
+    fn a_hub_message_from_another_actor_of_the_program_is_refused() {
+        let message = hub(&Message::TargetValue(5));
+        let _transition = run(actor(STRANGER), Some(actor(DEPLOYER)), false, Vec::new(), message);
+    }
+
+    #[test]
+    #[should_panic(expected = "a hub message comes only from the config account")]
+    fn a_hub_message_at_the_config_is_refused() {
+        let message = hub(&Message::TargetValue(5));
+        let _transition = at_config_from(Some(actor(DEPLOYER)), bytes(&initialized()), message);
+    }
+
+    #[test]
+    #[should_panic(expected = "through the hub only")]
+    fn a_target_value_sent_through_a_seat_is_refused() {
+        let _transition =
+            through_seat(DEPLOYER, None, true, bytes(&initialized()), Message::TargetValue(5));
+    }
+
+    #[test]
+    #[should_panic(expected = "sending to a target needs the admin")]
+    fn send_needs_the_admin_check_first() {
+        let message = Message::SetOpenValue(1);
+        let input = input(config_actor(), None, false, bytes(&initialized()), &message);
+        let _response = lez_admin_authority::guard_with_targets(
+            &input,
+            &CONFIG_SEED,
+            InitGate::Deployer,
+            message,
+            |ctx: &mut Ctx, _config: &mut Config, _message| {
+                ctx.send(STRANGER, &Message::TargetValue(1));
+            },
+            handle_target,
+        );
     }
 
     #[test]

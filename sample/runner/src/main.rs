@@ -8,7 +8,7 @@
 use anyhow::{Context, Result, anyhow};
 use lee_core::account::{AccountId, Actor};
 use lez_admin_authority::{AdminOp, AuthoritySlot, Holder};
-use sample_core::{CONFIG_SEED, Config, Message, config_account};
+use sample_core::{CONFIG_SEED, Config, Message, TargetState, config_account};
 use wallet::{
     AccountIdentity, AccountMention, WalletCore, program_facades::program_loader::ProgramLoader,
 };
@@ -58,6 +58,10 @@ async fn main() -> Result<()> {
         .without_authorization()
     };
     let seat = |account: AccountId| AccountIdentity::Public(account).select_program_actor_state(program);
+    // A target: the program's actor on an account that does not sign.
+    let target = |account: AccountId| {
+        AccountIdentity::PublicNoSign(account).select_program_actor_state(program)
+    };
 
     // A stranger's Init first: the gate refuses it, the config account stays empty.
     call(&wallet, payer, vec![seat(stranger), config()], &Message::Admin(AdminOp::Init), "stranger init").await?;
@@ -90,6 +94,16 @@ async fn main() -> Result<()> {
         ..expected
     };
     check(&wallet, program, Some(&expected), "after the admin setter").await?;
+
+    // The admin sets a value on the stranger's account through the hub: three hops, so the
+    // target is in the actor list too.
+    let set_target = Message::SetTargetValue {
+        target: stranger,
+        value: 5,
+    };
+    call(&wallet, payer, vec![seat(deployer), config(), target(stranger)], &set_target, "target setter").await?;
+    check(&wallet, program, Some(&expected), "after the target setter, config unchanged").await?;
+    check_target(&wallet, program, stranger, Some(&TargetState { value: 5 }), "the target's state").await?;
 
     // A stranger through its own seat. The transaction is included and reverted, so the config
     // must read back unchanged. The refusal text is only in the sequencer's log.
@@ -164,6 +178,32 @@ async fn call(
         .map_err(|error| anyhow!("{what}: {error:?}"))?;
     let (_tx, block) = wallet.poll_transaction(hash).await?;
     println!("{what}: included in block {block:?}");
+    Ok(())
+}
+
+/// Reads a target's state back and compares it with what the step should have left.
+async fn check_target(
+    wallet: &WalletCore,
+    program: AccountId,
+    target: AccountId,
+    expected: Option<&TargetState>,
+    when: &str,
+) -> Result<()> {
+    let found: Option<TargetState> = match wallet.get_account_view(Actor::new(target, program)).await? {
+        None => None,
+        Some(account) => {
+            let state: &[u8] = account.data.actor_state(program);
+            if state.is_empty() {
+                None
+            } else {
+                Some(borsh::from_slice(state).context("the target state does not decode")?)
+            }
+        }
+    };
+    println!("{when}: {found:?}");
+    if found.as_ref() != expected {
+        return Err(anyhow!("{when}: expected {expected:?}"));
+    }
     Ok(())
 }
 

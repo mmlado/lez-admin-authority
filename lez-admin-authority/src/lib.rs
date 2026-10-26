@@ -10,8 +10,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use lee_core::program::{PdaSeed, ReceiveInput, Response};
 pub use lez_authority::{
-    AuthorityError, AuthoritySlot, Caller, Forwarded, HasSlot, Holder, Hosts, InitGate, Role,
-    config_account, seed,
+    AuthorityError, AuthoritySlot, Caller, Forwarded, HasSlot, Holder, Hosts, Hub, InitGate,
+    Role, config_account, seed,
 };
 
 /// The operations the program hosts in its message enum: `Init`, `Nominate`, `Accept` and
@@ -37,9 +37,17 @@ impl Ctx<'_> {
     }
 
     /// Panics unless the message came through the sender's own actor and the sender is
-    /// the admin. Call it first in every arm that is the admin's.
-    pub fn require_admin(&self, slot: &AuthoritySlot) {
+    /// the admin. Call it first in every arm that is the admin's. Afterwards the arm may
+    /// send to targets.
+    pub fn require_admin(&mut self, slot: &AuthoritySlot) {
         self.0.require(slot);
+    }
+
+    /// Sends `message` to `target`'s own actor under the program, after the handler
+    /// returns. The target receives it as a hub message and knows it came from the config.
+    /// Panics unless `require_admin` passed first.
+    pub fn send<M: Hosts>(&mut self, target: lee_core::account::AccountId, message: &M) {
+        self.0.send(target, message);
     }
 
     /// Installs the sender as the admin of an unset slot, if the sender passes the init gate.
@@ -85,6 +93,34 @@ where
     lez_authority::guard::<Admin, C, M>(input, seed, gate, message, |ctx, config, message| {
         handler(&mut Ctx(ctx), config, message);
     })
+}
+
+/// [`guard`] for a program with targets: `target_handler` runs at a target over the
+/// target's own state `T`, for hub messages that came from the config account itself.
+///
+/// # Panics
+/// On every refusal, with the reason as the text.
+pub fn guard_with_targets<C, T, M>(
+    input: &ReceiveInput,
+    seed: &PdaSeed,
+    gate: InitGate,
+    message: M,
+    handler: impl FnOnce(&mut Ctx<'_>, &mut C, M),
+    target_handler: impl FnOnce(&mut T, M),
+) -> Response
+where
+    C: BorshSerialize + BorshDeserialize + Default + HasSlot<Admin>,
+    T: BorshSerialize + BorshDeserialize + Default,
+    M: Hosts,
+{
+    lez_authority::guard_with_targets::<Admin, C, T, M>(
+        input,
+        seed,
+        gate,
+        message,
+        |ctx, config, message| handler(&mut Ctx(ctx), config, message),
+        target_handler,
+    )
 }
 
 /// [`guard`] with the guard's own refusals as a value. The context still panics.
