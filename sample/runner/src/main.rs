@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let stranger = wallet.create_new_account_public(None).0;
     let nominee = wallet.create_new_account_public(None).0;
     wallet.store_persistent_data()?;
-    let program = ProgramLoader(&mut wallet)
+    let program = ProgramLoader(&wallet)
         .deploy(deployer, &segments, bytecode, true, Some(payer))
         .await?;
     println!("program  {program:?}");
@@ -57,19 +57,40 @@ async fn main() -> Result<()> {
         .select_program_actor_state(program)
         .without_authorization()
     };
-    let seat = |account: AccountId| AccountIdentity::Public(account).select_program_actor_state(program);
+    let seat =
+        |account: AccountId| AccountIdentity::Public(account).select_program_actor_state(program);
     // A target: the program's actor on an account that does not sign.
     let target = |account: AccountId| {
         AccountIdentity::PublicNoSign(account).select_program_actor_state(program)
     };
 
     // A stranger's Init first: the gate refuses it, the config account stays empty.
-    call(&wallet, payer, vec![seat(stranger), config()], &Message::Admin(AdminOp::Init), "stranger init").await?;
-    check(&wallet, program, None, "after the stranger's init, must be empty").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(stranger), config()],
+        &Message::Admin(AdminOp::Init),
+        "stranger init",
+    )
+    .await?;
+    check(
+        &wallet,
+        program,
+        None,
+        "after the stranger's init, must be empty",
+    )
+    .await?;
 
     // Through the deployer's seat: the seat and the config, the deployer signs. The deployer
     // is the program's own account, so the gate lets it through.
-    call(&wallet, payer, vec![seat(deployer), config()], &Message::Admin(AdminOp::Init), "init").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(deployer), config()],
+        &Message::Admin(AdminOp::Init),
+        "init",
+    )
+    .await?;
     let expected = Config {
         open_value: 0,
         admin_value: 0,
@@ -81,14 +102,28 @@ async fn main() -> Result<()> {
     check(&wallet, program, Some(&expected), "after init").await?;
 
     // Straight to the config: anyone, the payer signs for the fee only.
-    call(&wallet, payer, vec![config()], &Message::SetOpenValue(7), "open setter").await?;
+    call(
+        &wallet,
+        payer,
+        vec![config()],
+        &Message::SetOpenValue(7),
+        "open setter",
+    )
+    .await?;
     let expected = Config {
         open_value: 7,
         ..expected
     };
     check(&wallet, program, Some(&expected), "after the open setter").await?;
 
-    call(&wallet, payer, vec![seat(deployer), config()], &Message::SetAdminValue(9), "admin setter").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(deployer), config()],
+        &Message::SetAdminValue(9),
+        "admin setter",
+    )
+    .await?;
     let expected = Config {
         admin_value: 9,
         ..expected
@@ -101,18 +136,58 @@ async fn main() -> Result<()> {
         target: stranger,
         value: 5,
     };
-    call(&wallet, payer, vec![seat(deployer), config(), target(stranger)], &set_target, "target setter").await?;
-    check(&wallet, program, Some(&expected), "after the target setter, config unchanged").await?;
-    check_target(&wallet, program, stranger, Some(&TargetState { value: 5 }), "the target's state").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(deployer), config(), target(stranger)],
+        &set_target,
+        "target setter",
+    )
+    .await?;
+    check(
+        &wallet,
+        program,
+        Some(&expected),
+        "after the target setter, config unchanged",
+    )
+    .await?;
+    check_target(
+        &wallet,
+        program,
+        stranger,
+        Some(&TargetState { value: 5 }),
+        "the target's state",
+    )
+    .await?;
 
     // A stranger through its own seat. The transaction is included and reverted, so the config
     // must read back unchanged. The refusal text is only in the sequencer's log.
-    call(&wallet, payer, vec![seat(stranger), config()], &Message::SetAdminValue(1), "stranger").await?;
-    check(&wallet, program, Some(&expected), "after the stranger, must be unchanged").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(stranger), config()],
+        &Message::SetAdminValue(1),
+        "stranger",
+    )
+    .await?;
+    check(
+        &wallet,
+        program,
+        Some(&expected),
+        "after the stranger, must be unchanged",
+    )
+    .await?;
 
     // Handover: the admin nominates, nothing moves, the nominee accepts through its own seat.
     let nominate = Message::Admin(AdminOp::Nominate { next: nominee });
-    call(&wallet, payer, vec![seat(deployer), config()], &nominate, "nominate").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(deployer), config()],
+        &nominate,
+        "nominate",
+    )
+    .await?;
     let expected = Config {
         admin: AuthoritySlot::Held {
             holder: Holder {
@@ -125,11 +200,31 @@ async fn main() -> Result<()> {
     };
     check(&wallet, program, Some(&expected), "after nominate").await?;
 
-    call(&wallet, payer, vec![seat(nominee), config()], &Message::SetAdminValue(1), "nominee before accept").await?;
-    check(&wallet, program, Some(&expected), "after the nominee's early call, must be unchanged").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(nominee), config()],
+        &Message::SetAdminValue(1),
+        "nominee before accept",
+    )
+    .await?;
+    check(
+        &wallet,
+        program,
+        Some(&expected),
+        "after the nominee's early call, must be unchanged",
+    )
+    .await?;
 
     let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
-    call(&wallet, payer, vec![seat(nominee), config()], &accept, "accept").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(nominee), config()],
+        &accept,
+        "accept",
+    )
+    .await?;
     let expected = Config {
         admin: AuthoritySlot::held(Holder {
             account: nominee,
@@ -139,27 +234,75 @@ async fn main() -> Result<()> {
     };
     check(&wallet, program, Some(&expected), "after accept").await?;
 
-    call(&wallet, payer, vec![seat(nominee), config()], &Message::SetAdminValue(11), "new admin setter").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(nominee), config()],
+        &Message::SetAdminValue(11),
+        "new admin setter",
+    )
+    .await?;
     let expected = Config {
         admin_value: 11,
         ..expected
     };
-    check(&wallet, program, Some(&expected), "after the new admin's setter").await?;
+    check(
+        &wallet,
+        program,
+        Some(&expected),
+        "after the new admin's setter",
+    )
+    .await?;
 
-    call(&wallet, payer, vec![seat(deployer), config()], &Message::SetAdminValue(2), "old admin").await?;
-    check(&wallet, program, Some(&expected), "after the old admin, must be unchanged").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(deployer), config()],
+        &Message::SetAdminValue(2),
+        "old admin",
+    )
+    .await?;
+    check(
+        &wallet,
+        program,
+        Some(&expected),
+        "after the old admin, must be unchanged",
+    )
+    .await?;
 
-    call(&wallet, payer, vec![seat(nominee), config()], &Message::Admin(AdminOp::Renounce), "renounce").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(nominee), config()],
+        &Message::Admin(AdminOp::Renounce),
+        "renounce",
+    )
+    .await?;
     let expected = Config {
         admin: AuthoritySlot::Renounced,
         ..expected
     };
     check(&wallet, program, Some(&expected), "after renounce").await?;
 
-    call(&wallet, payer, vec![seat(nominee), config()], &Message::SetAdminValue(3), "after renounce").await?;
-    check(&wallet, program, Some(&expected), "after the renounced admin's call, must be unchanged").await?;
+    call(
+        &wallet,
+        payer,
+        vec![seat(nominee), config()],
+        &Message::SetAdminValue(3),
+        "after renounce",
+    )
+    .await?;
+    check(
+        &wallet,
+        program,
+        Some(&expected),
+        "after the renounced admin's call, must be unchanged",
+    )
+    .await?;
 
-    println!("all steps behaved. The refused calls are: stranger init, stranger, nominee before accept, old admin, after renounce. Their text is in the sequencer log.");
+    println!(
+        "all steps behaved. The refused calls are: stranger init, stranger, nominee before accept, old admin, after renounce. Their text is in the sequencer log."
+    );
     Ok(())
 }
 
@@ -189,17 +332,18 @@ async fn check_target(
     expected: Option<&TargetState>,
     when: &str,
 ) -> Result<()> {
-    let found: Option<TargetState> = match wallet.get_account_view(Actor::new(target, program)).await? {
-        None => None,
-        Some(account) => {
-            let state: &[u8] = account.data.actor_state(program);
-            if state.is_empty() {
-                None
-            } else {
-                Some(borsh::from_slice(state).context("the target state does not decode")?)
+    let found: Option<TargetState> =
+        match wallet.get_account_view(Actor::new(target, program)).await? {
+            None => None,
+            Some(account) => {
+                let state: &[u8] = account.data.actor_state(program);
+                if state.is_empty() {
+                    None
+                } else {
+                    Some(borsh::from_slice(state).context("the target state does not decode")?)
+                }
             }
-        }
-    };
+        };
     println!("{when}: {found:?}");
     if found.as_ref() != expected {
         return Err(anyhow!("{when}: expected {expected:?}"));
@@ -208,7 +352,12 @@ async fn check_target(
 }
 
 /// Reads the config back and compares it with what the step should have left.
-async fn check(wallet: &WalletCore, program: AccountId, expected: Option<&Config>, when: &str) -> Result<()> {
+async fn check(
+    wallet: &WalletCore,
+    program: AccountId,
+    expected: Option<&Config>,
+    when: &str,
+) -> Result<()> {
     let actor = Actor::new(config_account(program), program);
     let found: Option<Config> = match wallet.get_account_view(actor).await? {
         None => None,

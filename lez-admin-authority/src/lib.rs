@@ -10,8 +10,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use lee_core::program::{PdaSeed, ReceiveInput, Response};
 pub use lez_authority::{
-    AuthorityError, AuthoritySlot, Caller, Forwarded, HasSlot, Holder, Hosts, Hub, InitGate,
-    Role, config_account, seed,
+    AuthorityError, AuthoritySlot, Caller, Forwarded, HasSlot, Holder, Hosts, Hub, InitGate, Role,
+    config_account, seed,
 };
 
 /// The operations the program hosts in its message enum: `Init`, `Nominate`, `Accept` and

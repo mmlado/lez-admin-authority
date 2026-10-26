@@ -64,7 +64,13 @@ fn handle_message(ctx: &mut Ctx, config: &mut Config, message: Message) {
 }
 
 fn entry(input: &ReceiveInput, message: Message) -> Response {
-    lez_admin_authority::guard(input, &CONFIG_SEED, InitGate::Deployer, message, handle_message)
+    lez_admin_authority::guard(
+        input,
+        &CONFIG_SEED,
+        InitGate::Deployer,
+        message,
+        handle_message,
+    )
 }
 
 lee_core::actor_entrypoint!(entry);
@@ -84,10 +90,19 @@ mod tests {
     const STRANGER: AccountId = AccountId::new([2; 32]);
 
     fn config_actor() -> Actor {
-        Actor::new(lez_admin_authority::config_account(PROGRAM, &CONFIG_SEED), PROGRAM)
+        Actor::new(
+            lez_admin_authority::config_account(PROGRAM, &CONFIG_SEED),
+            PROGRAM,
+        )
     }
 
-    fn run(receiver: Actor, from: Option<Actor>, authorized: bool, pre: Vec<u8>, message: Message) -> Transition {
+    fn run(
+        receiver: Actor,
+        from: Option<Actor>,
+        authorized: bool,
+        pre: Vec<u8>,
+        message: Message,
+    ) -> Transition {
         let input = ReceiveInput {
             receiver,
             from,
@@ -103,7 +118,13 @@ mod tests {
         let hop = run(Actor::new(sender, PROGRAM), None, true, Vec::new(), message);
         let [SyncMessage { message, .. }] =
             <[SyncMessage; 1]>::try_from(hop.response.sync_messages).unwrap();
-        run(config_actor(), Some(Actor::new(sender, PROGRAM)), false, pre, borsh::from_slice(&message).unwrap())
+        run(
+            config_actor(),
+            Some(Actor::new(sender, PROGRAM)),
+            false,
+            pre,
+            borsh::from_slice(&message).unwrap(),
+        )
     }
 
     fn written(transition: &Transition) -> Config {
@@ -114,7 +135,10 @@ mod tests {
         Config {
             open_value: 0,
             admin_value: 0,
-            admin: AuthoritySlot::held(Holder { account: DEPLOYER, via: None }),
+            admin: AuthoritySlot::held(Holder {
+                account: DEPLOYER,
+                via: None,
+            }),
         }
     }
 
@@ -123,16 +147,30 @@ mod tests {
         let init = through_seat(DEPLOYER, Vec::new(), Message::Admin(AdminOp::Init));
         assert_eq!(written(&init), initialized());
 
-        let open = run(config_actor(), None, false, borsh::to_vec(&initialized()).unwrap(), Message::SetOpenValue(7));
+        let open = run(
+            config_actor(),
+            None,
+            false,
+            borsh::to_vec(&initialized()).unwrap(),
+            Message::SetOpenValue(7),
+        );
         assert_eq!(written(&open).open_value, 7);
 
-        let admin = through_seat(DEPLOYER, borsh::to_vec(&initialized()).unwrap(), Message::SetAdminValue(9));
+        let admin = through_seat(
+            DEPLOYER,
+            borsh::to_vec(&initialized()).unwrap(),
+            Message::SetAdminValue(9),
+        );
         assert_eq!(written(&admin).admin_value, 9);
     }
 
     #[test]
     #[should_panic(expected = "E103: the signing account is not the admin")]
     fn a_stranger_is_refused() {
-        let _transition = through_seat(STRANGER, borsh::to_vec(&initialized()).unwrap(), Message::SetAdminValue(1));
+        let _transition = through_seat(
+            STRANGER,
+            borsh::to_vec(&initialized()).unwrap(),
+            Message::SetAdminValue(1),
+        );
     }
 }
