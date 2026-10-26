@@ -10,7 +10,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use lee_core::program::{PdaSeed, ReceiveInput, Response};
 pub use lez_authority::{
-    AuthorityError, AuthoritySlot, Caller, Forwarded, HasSlot, Holder, Hosts, Role,
+    AuthorityError, AuthoritySlot, Caller, Forwarded, HasSlot, Holder, Hosts, InitGate, Role,
     config_account, seed,
 };
 
@@ -42,8 +42,9 @@ impl Ctx<'_> {
         self.0.require(slot);
     }
 
-    /// Installs the sender as the admin of an unset slot. The hosted `AdminOp::Init` does
-    /// this without the handler; call it yourself from an init message of your own.
+    /// Installs the sender as the admin of an unset slot, if the sender passes the init gate.
+    /// The hosted `AdminOp::Init` does this without the handler; call it yourself from an
+    /// init message of your own.
     pub fn install_admin(&mut self, slot: &mut AuthoritySlot) {
         self.0.install(slot);
     }
@@ -65,13 +66,15 @@ impl Ctx<'_> {
     }
 }
 
-/// Runs `handler` behind the hop and the slot check. See `lez_authority::guard`.
+/// Runs `handler` behind the hop and the slot check. `gate` says who may send the first
+/// `Init`: the deployer, or a genesis key. See `lez_authority::guard`.
 ///
 /// # Panics
 /// On every refusal, with the reason as the text.
 pub fn guard<C, M>(
     input: &ReceiveInput,
     seed: &PdaSeed,
+    gate: InitGate,
     message: M,
     handler: impl FnOnce(&mut Ctx<'_>, &mut C, M),
 ) -> Response
@@ -79,7 +82,7 @@ where
     C: BorshSerialize + BorshDeserialize + Default + HasSlot<Admin>,
     M: Hosts,
 {
-    lez_authority::guard::<Admin, C, M>(input, seed, message, |ctx, config, message| {
+    lez_authority::guard::<Admin, C, M>(input, seed, gate, message, |ctx, config, message| {
         handler(&mut Ctx(ctx), config, message);
     })
 }
@@ -91,6 +94,7 @@ where
 pub fn try_guard<C, M>(
     input: &ReceiveInput,
     seed: &PdaSeed,
+    gate: InitGate,
     message: M,
     handler: impl FnOnce(&mut Ctx<'_>, &mut C, M),
 ) -> Result<Response, AuthorityError>
@@ -98,7 +102,7 @@ where
     C: BorshSerialize + BorshDeserialize + Default + HasSlot<Admin>,
     M: Hosts,
 {
-    lez_authority::try_guard::<Admin, C, M>(input, seed, message, |ctx, config, message| {
+    lez_authority::try_guard::<Admin, C, M>(input, seed, gate, message, |ctx, config, message| {
         handler(&mut Ctx(ctx), config, message);
     })
 }

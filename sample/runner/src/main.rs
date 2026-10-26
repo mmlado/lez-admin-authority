@@ -59,7 +59,12 @@ async fn main() -> Result<()> {
     };
     let seat = |account: AccountId| AccountIdentity::Public(account).select_program_actor_state(program);
 
-    // Through the deployer's seat: the seat and the config, the deployer signs.
+    // A stranger's Init first: the gate refuses it, the config account stays empty.
+    call(&wallet, payer, vec![seat(stranger), config()], &Message::Admin(AdminOp::Init), "stranger init").await?;
+    check(&wallet, program, None, "after the stranger's init, must be empty").await?;
+
+    // Through the deployer's seat: the seat and the config, the deployer signs. The deployer
+    // is the program's own account, so the gate lets it through.
     call(&wallet, payer, vec![seat(deployer), config()], &Message::Admin(AdminOp::Init), "init").await?;
     let expected = Config {
         open_value: 0,
@@ -140,7 +145,7 @@ async fn main() -> Result<()> {
     call(&wallet, payer, vec![seat(nominee), config()], &Message::SetAdminValue(3), "after renounce").await?;
     check(&wallet, program, Some(&expected), "after the renounced admin's call, must be unchanged").await?;
 
-    println!("all steps behaved. The refused calls are: stranger, nominee before accept, old admin, after renounce. Their text is in the sequencer log.");
+    println!("all steps behaved. The refused calls are: stranger init, stranger, nominee before accept, old admin, after renounce. Their text is in the sequencer log.");
     Ok(())
 }
 

@@ -5,14 +5,14 @@
 //! the sender and forwards them to the config. The guard does that hop, hands the handler
 //! a context, and checks afterwards that the admin slot changed only through it.
 //!
-//! `Admin(AdminOp::Init)` and `Admin(AdminOp::Renounce)` are the library's: the guard runs
-//! them and the handler never sees them. Whoever sends `Init` through their own actor
-//! first becomes the admin, and until then every other message is refused. The first write
-//! to the config account needs `PublicAccountEvidence::Pda { program, seed }` in the
-//! transaction.
+//! The `Admin(..)` operations are the library's: the guard runs them and the handler never
+//! sees them. Only the deployer, the program's own account, sends `Init`, because the
+//! program id is the loader header account and the deployer holds its key. Until then every
+//! other message is refused. The first write to the config account needs
+//! `PublicAccountEvidence::Pda { program, seed }` in the transaction.
 
 use lee_core::program::{ReceiveInput, Response};
-use lez_admin_authority::Ctx;
+use lez_admin_authority::{Ctx, InitGate};
 use sample_core::{CONFIG_SEED, Config, Message};
 
 fn handle_message(ctx: &mut Ctx, config: &mut Config, message: Message) {
@@ -29,7 +29,7 @@ fn handle_message(ctx: &mut Ctx, config: &mut Config, message: Message) {
 }
 
 fn entry(input: &ReceiveInput, message: Message) -> Response {
-    lez_admin_authority::guard(input, &CONFIG_SEED, message, handle_message)
+    lez_admin_authority::guard(input, &CONFIG_SEED, InitGate::Deployer, message, handle_message)
 }
 
 lee_core::actor_entrypoint!(entry);
@@ -46,7 +46,9 @@ mod tests {
     use super::*;
 
     const PROGRAM: AccountId = AccountId::new([0xA0; 32]);
-    const DEPLOYER: AccountId = AccountId::new([1; 32]);
+    // The deployer is the program's own account: the header account whose key deployed it.
+    const DEPLOYER: AccountId = PROGRAM;
+    const GENESIS: AccountId = AccountId::new([1; 32]);
     const STRANGER: AccountId = AccountId::new([2; 32]);
     const GOVERNANCE: AccountId = AccountId::new([6; 32]);
 
@@ -199,9 +201,45 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "the admin is already installed")]
-    fn a_second_init_by_another_account_is_refused() {
-        let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), Message::Admin(AdminOp::Init));
+    #[should_panic(expected = "only the deployer installs the first admin")]
+    fn init_by_another_account_is_refused() {
+        let _transition = through_seat(STRANGER, None, true, Vec::new(), Message::Admin(AdminOp::Init));
+    }
+
+    #[test]
+    #[should_panic(expected = "only the deployer installs the first admin")]
+    fn init_by_the_deployer_through_a_program_is_refused() {
+        let governance = Actor::new(STRANGER, GOVERNANCE);
+        let _transition =
+            through_seat(DEPLOYER, Some(governance), true, Vec::new(), Message::Admin(AdminOp::Init));
+    }
+
+    fn entry_with_genesis(input: &ReceiveInput, message: Message) -> Response {
+        let gate = InitGate::Genesis(GENESIS);
+        lez_admin_authority::guard(input, &CONFIG_SEED, gate, message, handle_message)
+    }
+
+    fn through_seat_with_genesis(seat: AccountId, pre: Vec<u8>, message: Message) -> Transition {
+        let run = |receiver: Actor, from: Option<Actor>, pre: Vec<u8>, message: Message| {
+            let input = input(receiver, from, true, pre, &message);
+            entry_with_genesis(&input, message).into_transition(input)
+        };
+        let hop = run(actor(seat), None, Vec::new(), message);
+        let [SyncMessage { message, .. }] =
+            <[SyncMessage; 1]>::try_from(hop.response.sync_messages).expect("one forwarded message");
+        run(config_actor(), Some(actor(seat)), pre, borsh::from_slice(&message).unwrap())
+    }
+
+    #[test]
+    fn with_a_genesis_key_that_key_installs_itself() {
+        let transition = through_seat_with_genesis(GENESIS, Vec::new(), Message::Admin(AdminOp::Init));
+        assert_eq!(written(&transition).admin, held(GENESIS, None));
+    }
+
+    #[test]
+    #[should_panic(expected = "only the genesis key installs the first admin")]
+    fn with_a_genesis_key_the_deployer_is_refused() {
+        let _transition = through_seat_with_genesis(DEPLOYER, Vec::new(), Message::Admin(AdminOp::Init));
     }
 
     #[test]
@@ -278,18 +316,14 @@ mod tests {
         );
     }
 
-    // A PDA admin: its program initialized through the PDA's seat with the seed, so the
-    // holder acts through that program and only through it.
+    // A PDA admin, which only accept can install, acts through its program and only there.
     #[test]
     fn a_pda_admin_acts_through_its_program() {
         let governance = Actor::new(STRANGER, GOVERNANCE);
-        let init = through_seat(DEPLOYER, Some(governance), true, Vec::new(), Message::Admin(AdminOp::Init));
         let pda_admin = Config {
             admin: held(DEPLOYER, Some(GOVERNANCE)),
             ..initialized()
         };
-        assert_eq!(written(&init), pda_admin);
-
         let transition = through_seat(
             DEPLOYER,
             Some(governance),
@@ -470,6 +504,7 @@ mod tests {
         let _response = lez_admin_authority::guard(
             &input,
             &CONFIG_SEED,
+            InitGate::Deployer,
             message,
             |_ctx: &mut Ctx, config: &mut Config, _message| {
                 config.admin = AuthoritySlot::Unset;
