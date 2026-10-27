@@ -3,12 +3,13 @@
 [![CI](https://github.com/mmlado/lez-admin-authority/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlado/lez-admin-authority/actions/workflows/ci.yml)
 [![Consumer build](https://github.com/mmlado/lez-admin-authority/actions/workflows/consumer-build.yml/badge.svg)](https://github.com/mmlado/lez-admin-authority/actions/workflows/consumer-build.yml)
 [![Audit](https://github.com/mmlado/lez-admin-authority/actions/workflows/audit.yml/badge.svg)](https://github.com/mmlado/lez-admin-authority/actions/workflows/audit.yml)
+[![Version](https://img.shields.io/github/v/tag/mmlado/lez-admin-authority?include_prereleases&sort=semver&label=version)](https://github.com/mmlado/lez-admin-authority/releases)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.98.1-93450a?logo=rust)](rust-toolchain.toml)
 
 Single-admin authority for LEZ actor programs (LEZ 0.4): one admin per program, installed by the deployer, handed over by nominate and accept, renounceable, and checked wherever the program's handler asks. A pure Rust library with no macros and no SPEL dependency, built on [lez-authority](https://github.com/mmlado/lez-authority), which owns the routing and the slot. Macros on top of it (level 2) and a SPEL shim (level 3) are planned, each cutting the integrator's boilerplate further.
 
-Status: pre-alpha, nothing released yet. Pinned to logos-execution-zone `dev` at 7e3f7f7 (2026-10-24). The v0.2.4 line lives in [spel-admin-authority](https://github.com/mmlado/spel-admin-authority) and stays as it is. Coming from it: [docs/migration-from-v0.2.md](docs/migration-from-v0.2.md).
+Status: alpha, `v0.1.0-alpha.1`. The API and the wire formats may still change before 0.1.0. Pinned to logos-execution-zone `dev` at 7e3f7f7 (2026-10-24) and lez-authority `v0.1.0-alpha.1`. The v0.2.4 line lives in [spel-admin-authority](https://github.com/mmlado/spel-admin-authority) and stays as it is. Coming from it: [docs/migration-from-v0.2.md](docs/migration-from-v0.2.md).
 
 ## What it does
 
@@ -127,10 +128,10 @@ Identity comes from the engine's `from` at every hop, never from a field in the 
 [dependencies]
 borsh = { version = "1", features = ["derive"] }
 lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
-lez-admin-authority = { git = "https://github.com/mmlado/lez-admin-authority", branch = "main" }
+lez-admin-authority = { git = "https://github.com/mmlado/lez-admin-authority", tag = "v0.1.0-alpha.1" }
 ```
 
-The `lee_core` source must match the one this repo pins, spelt the same way: cargo treats a tag and a rev as different sources even when they point at the same commit, and two copies of `lee_core` do not compile. `lez-authority` comes in transitively. The pin moves to a tag at the first release.
+The `lee_core` source must match the one this repo pins, spelt the same way: cargo treats a tag and a rev as different sources even when they point at the same commit, and two copies of `lee_core` do not compile. `lez-authority` comes in transitively.
 
 The guest builds with the risc0 toolchain, installed through `rzup`, at risc0 3.0.5 and Rust 1.98.1. [`ci/consumer-fixture`](ci/consumer-fixture/) is the smallest complete setup: a methods crate with `risc0_build::embed_methods` and a guest crate that depends on this library.
 
@@ -276,7 +277,7 @@ RISC0_DEV_MODE=1 cargo test --manifest-path sample/methods/Cargo.toml --test ove
 
 Semantic versioning covers the public Rust API and the on-chain wire formats: the Borsh encoding of `AuthoritySlot` inside your config, and of `AdminOp`, `Forwarded` and `Hub` inside your message enum. The variant positions in your enum are yours. The refusal codes and their meaning are covered too. While the version is 0.x, a minor bump may change any of them, and each such change is called out in the [changelog](CHANGELOG.md).
 
-The `lee_core` dependency pins logos-execution-zone `dev` at commit `7e3f7f765371c4110a1f7f37baf520cd253fb339`, and lez-authority at a commit of its own until it has a tag. Every re-pin is a minor release.
+The `lee_core` dependency pins logos-execution-zone `dev` at commit `7e3f7f765371c4110a1f7f37baf520cd253fb339`, and lez-authority at its `v0.1.0-alpha.1` tag. Every re-pin is a minor release.
 
 ## License
 
@@ -284,7 +285,7 @@ Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE2) at the 
 
 ## Developing against a local lez-authority
 
-The workspace pins `lez-authority` to a commit on GitHub. To build against the sibling checkout instead, add an untracked `.cargo/config.toml`:
+The workspace pins `lez-authority` to its tag on GitHub. To build against the sibling checkout instead, add an untracked `.cargo/config.toml`:
 
 ```toml
 [patch."https://github.com/mmlado/lez-authority"]

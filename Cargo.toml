@@ -3,15 +3,14 @@ members = ["lez-admin-authority", "sample", "sample/core", "sample/runner", "sam
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 borsh = { version = "1", features = ["derive"] }
 lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
-# A commit until lez-authority has a tag to pin.
-lez-authority = { git = "https://github.com/mmlado/lez-authority", rev = "9c0b4bd04bc95e61ec6d3fd6029cb97bf2136ef6" }
+lez-authority = { git = "https://github.com/mmlado/lez-authority", tag = "v0.1.0-alpha.1" }
 lez-admin-authority = { path = "lez-admin-authority" }
 wallet = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
 program_loader_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }

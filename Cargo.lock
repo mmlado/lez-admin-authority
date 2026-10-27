@@ -3714,7 +3714,7 @@ dependencies = [
 
 [[package]]
 name = "lez-admin-authority"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "borsh",
  "lee_core",
@@ -3723,8 +3723,8 @@ dependencies = [
 
 [[package]]
 name = "lez-authority"
-version = "0.1.0"
-source = "git+https://github.com/mmlado/lez-authority?rev=9c0b4bd04bc95e61ec6d3fd6029cb97bf2136ef6#9c0b4bd04bc95e61ec6d3fd6029cb97bf2136ef6"
+version = "0.1.0-alpha.1"
+source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0-alpha.1#0f956f91a6fdbdf36ad25c7b89e147d7cb61cba0"
 dependencies = [
  "borsh",
  "lee_core",
@@ -7039,7 +7039,7 @@ dependencies = [
 
 [[package]]
 name = "sample"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "borsh",
  "lee_core",
@@ -7049,7 +7049,7 @@ dependencies = [
 
 [[package]]
 name = "sample-minimal"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "borsh",
  "lee_core",
@@ -7058,7 +7058,7 @@ dependencies = [
 
 [[package]]
 name = "sample-runner"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "borsh",
@@ -7073,7 +7073,7 @@ dependencies = [
 
 [[package]]
 name = "sample_core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "borsh",
  "lee_core",
