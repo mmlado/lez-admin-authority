@@ -1140,8 +1140,8 @@ dependencies = [
 
 [[package]]
 name = "lez-admin-authority"
-version = "0.1.0"
-source = "git+https://github.com/mmlado/lez-admin-authority?branch=main#b1e2bd1a48555aa32065c3b8be3a0a5165c2d37e"
+version = "0.1.0-alpha.1"
+source = "git+https://github.com/mmlado/lez-admin-authority?tag=v0.1.0-alpha.1#41bb41b5c594362e8ee30b584dd9134b2f258ccc"
 dependencies = [
  "borsh",
  "lee_core",
@@ -1150,8 +1150,8 @@ dependencies = [
 
 [[package]]
 name = "lez-authority"
-version = "0.1.0"
-source = "git+https://github.com/mmlado/lez-authority?rev=9c0b4bd04bc95e61ec6d3fd6029cb97bf2136ef6#9c0b4bd04bc95e61ec6d3fd6029cb97bf2136ef6"
+version = "0.1.0-alpha.1"
+source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0-alpha.1#0f956f91a6fdbdf36ad25c7b89e147d7cb61cba0"
 dependencies = [
  "borsh",
  "lee_core",
