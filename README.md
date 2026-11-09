@@ -235,11 +235,11 @@ Measured from the sample's guest under the risc0 executor, per guest execution. 
 
 | Operation | Hops | Cycles |
 | --- | --- | ---: |
-| open setter | 1 | 16,355 |
-| init | 2 | 23,861 |
-| admin setter | 2 | 28,977 |
-| nominate | 2 | 26,055 |
-| target setter | 3 | 37,679 |
+| open setter | 1 | 16,784 |
+| init | 2 | 23,891 |
+| admin setter | 2 | 29,421 |
+| nominate | 2 | 26,031 |
+| target setter | 3 | 37,931 |
 
 About 10,000 cycles is the floor of any execution of this guest, the admin check costs about 2,700 over an open write, and each hop is one execution. At the config the guard decodes the config before the handler and decodes what the handler wrote after it, on top of the handler's own decode. Those reads grow with the config's size, so keep large data on other actors of the program, not in the config. The wallet's default `gas_limit` is 2,000,000 cycles, so the most expensive operation here uses about 2 percent of it. In transaction size, a gated message adds the sender's seat to the actor list, a pair of 32-byte ids, and the sender's signature. The program's messages keep their encoding.
 
