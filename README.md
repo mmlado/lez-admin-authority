@@ -106,8 +106,8 @@ The guest builds with the risc0 toolchain, installed through `rzup`, at risc0 3.
 
 ## Integration steps
 
-1. **Put the slot in your config.** One `AuthoritySlot` field marked `#[slot(Admin)]`, and `Default` and `HasSlot` derived on the struct. The config lives on the config account, a PDA of the program id and a seed you choose with `seed(b"..")`, at most 32 bytes.
-2. **Mark the admin-only messages.** Derive `Gated` on your message enum and put `#[only(Admin)]` on each admin-only message. A message the program sends from the config to another of its accounts gets `#[from_config]`, so nobody else can send it. Your enum keeps its variants and their order, and stays below 255 variants.
+1. **Put the slot in your config.** One `AuthoritySlot` field marked `#[slot(Admin)]`, and `Default` and `HasSlot` derived on the struct. Make the default a safe state: `Init` writes it, and your settings follow as admin-only messages. The config lives on the config account, a PDA of the program id and a seed you choose with `seed(b"..")`, at most 32 bytes.
+2. **Mark the admin-only messages.** Derive `Gated` on your message enum and put `#[only(Admin)]` on each admin-only message. A message the program sends from the config to another of its accounts gets `#[from_config]`, so nobody else can send it. Each message is checked by its variant, before your handler runs, so a rule that depends on the message's data or the program's state splits into an open variant and an admin-only one. Your enum keeps its variants and their order, and stays below 255 variants.
 3. **Put the attribute on your handler.** `#[lez_admin_authority::admin(config = Config, seed = CONFIG_SEED)]` on `fn handle_message(input: &ReceiveInput, message: Message) -> Response`, under `lee_core::actor_entrypoint!(handle_message)` as always. Add `genesis = KEY` for a [genesis key](#init-gate).
 4. **Build and deploy** the guest through a methods crate, as `sample/methods` does, and deploy the program binary with the wallet's program loader, immutable. The header account becomes the program id, and the key that deployed it is the deployer's.
 5. **Send `Init`** from the deployer's seat, as `admin_op(AdminOp::Init)`. Until it lands the config account is empty and every message there is refused, so there is no window for anyone else. The deployer is the first admin.
@@ -132,6 +132,55 @@ There is no IDL and no CLI for 0.4 yet. A client builds a transaction with the L
 In wallet terms a seat is `AccountIdentity::Public(account).select_program_actor_state(program)`, the config is `AccountIdentity::PublicPda { program, seed }` on the same program without authorization, and a target the wallet holds the key for is `PublicNoSign`. The wallet supplies the config account's PDA evidence from the mention. A client crate that builds these for any program is [issue #1](https://github.com/mmlado/lez-admin-authority/issues/1).
 
 A refused transaction is still included and charged, and the client learns nothing from it: read the config back with `get_account_view` on the config actor and decode your `Config`. The refusal text is in the sequencer log. [`sample/RUN.md`](sample/RUN.md) walks through a run on a local dev sequencer.
+
+## Testing the reject
+
+The attribute's output is an ordinary function of your crate, so a host test reaches the admin check the way a transaction does: it feeds `handle_message` the `ReceiveInput` of each hop. [`sample-minimal`](sample-minimal/src/main.rs) does it with two helpers and a test that `cargo test --workspace` runs:
+
+```rust
+fn run(
+    receiver: Actor,
+    from: Option<Actor>,
+    authorized: bool,
+    pre: Vec<u8>,
+    message: Wire<Message>,
+) -> Transition {
+    let input = ReceiveInput {
+        receiver,
+        from,
+        is_authorized: authorized,
+        pre_state: ActorState::from(pre),
+        message: borsh::to_vec(&message).unwrap(),
+    };
+    handle_message(&input, message).into_transition(input)
+}
+
+/// The sender's own actor forwards, then the config handles what it forwarded.
+fn through_seat(sender: AccountId, pre: Vec<u8>, message: Wire<Message>) -> Transition {
+    let hop = run(Actor::new(sender, PROGRAM), None, true, Vec::new(), message);
+    let [SyncMessage { message, .. }] =
+        <[SyncMessage; 1]>::try_from(hop.response.sync_messages).unwrap();
+    run(
+        config_actor(),
+        Some(Actor::new(sender, PROGRAM)),
+        false,
+        pre,
+        borsh::from_slice(&message).unwrap(),
+    )
+}
+
+#[test]
+#[should_panic(expected = "E103: the signing account is not the admin")]
+fn a_stranger_is_refused() {
+    let _transition = through_seat(
+        STRANGER,
+        borsh::to_vec(&initialized()).unwrap(),
+        Message::SetAdminValue(1).into(),
+    );
+}
+```
+
+A program that writes the guard call by hand, as lez-authority's [`examples/owner_by_hand.rs`](https://github.com/mmlado/lez-authority/blob/main/examples/owner_by_hand.rs) does, can call `try_guard` with its own handler and get the refusal as a value instead of a panic.
 
 ## Init gate
 
@@ -212,6 +261,8 @@ About 10,000 cycles is the floor of any execution of this guest, the admin check
 ## Not in this release
 
 - A one-step transfer. Nominate and accept is the one handover.
+- A check inside a handler arm, or one that depends on the message's data or the program's state. The guard checks each message by its variant, before the handler.
+- `Init` with the program's own settings. `Init` writes `Config::default()` with the admin installed, and the settings follow as admin-only messages.
 - A client crate or CLI: [issue #1](https://github.com/mmlado/lez-admin-authority/issues/1). The runner is the reference client.
 - An admin-only message that runs where it is sent, without the hop to the config: [lez-authority#1](https://github.com/mmlado/lez-authority/issues/1).
 - The level 3 SPEL shim.
