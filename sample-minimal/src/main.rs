@@ -1,79 +1,40 @@
-//! The smallest program with an admin. Everything it keeps lives on the config account, so
-//! it uses `guard`, hosts no hub variant, and never sees a third hop. One file: the types
-//! could move to a core crate for clients, as `sample` does, but nothing requires it.
+//! The smallest program with an admin: a plain LEZ program whose state lives on one account.
+//! The admin-only message is marked `#[only(Admin)]`, the handler is the program's own, and
+//! the attribute puts the guard in front of it. One file: the types could move to a core
+//! crate for clients, as `sample` does, but nothing requires it.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use lee_core::program::{PdaSeed, ReceiveInput, Response};
-use lez_admin_authority::{
-    Admin, AdminOp, AuthoritySlot, Ctx, Forwarded, HasSlot, Hosts, InitGate,
-};
+use lez_admin_authority::{Admin, AuthoritySlot, Gated, HasSlot};
 
 const CONFIG_SEED: PdaSeed = lez_admin_authority::seed(b"lez-admin-sample-minimal/v1");
 
-#[derive(Debug, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, HasSlot)]
 struct Config {
     open_value: u64,
     admin_value: u64,
+    #[slot(Admin)]
     admin: AuthoritySlot,
 }
 
-impl HasSlot<Admin> for Config {
-    fn slot(&self) -> &AuthoritySlot {
-        &self.admin
-    }
-    fn slot_mut(&mut self) -> &mut AuthoritySlot {
-        &mut self.admin
-    }
-}
-
-#[derive(Debug, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, BorshSerialize, BorshDeserialize, Gated)]
 enum Message {
     SetOpenValue(u64),
+    #[only(Admin)]
     SetAdminValue(u64),
-    Admin(AdminOp),
-    Forwarded(Forwarded),
 }
 
-impl Hosts for Message {
-    fn forwarded(hop: Forwarded) -> Self {
-        Message::Forwarded(hop)
-    }
-    fn into_forwarded(self) -> Result<Forwarded, Self> {
-        match self {
-            Message::Forwarded(hop) => Ok(hop),
-            other => Err(other),
-        }
-    }
-    fn into_op(self) -> Result<AdminOp, Self> {
-        match self {
-            Message::Admin(op) => Ok(op),
-            other => Err(other),
-        }
-    }
-}
-
-fn handle_message(ctx: &mut Ctx, config: &mut Config, message: Message) {
+#[lez_admin_authority::admin(config = Config, seed = CONFIG_SEED)]
+fn handle_message(input: &ReceiveInput, message: Message) -> Response {
+    let mut config: Config = borsh::from_slice(&input.pre_state).expect("the config decodes");
     match message {
         Message::SetOpenValue(value) => config.open_value = value,
-        Message::SetAdminValue(value) => {
-            ctx.require_admin(&config.admin);
-            config.admin_value = value;
-        }
-        Message::Admin(_) | Message::Forwarded(_) => unreachable!("the guard handles these"),
+        Message::SetAdminValue(value) => config.admin_value = value,
     }
+    Response::set_state(borsh::to_vec(&config).expect("the config encodes"))
 }
 
-fn entry(input: &ReceiveInput, message: Message) -> Response {
-    lez_admin_authority::guard(
-        input,
-        &CONFIG_SEED,
-        InitGate::Deployer,
-        message,
-        handle_message,
-    )
-}
-
-lee_core::actor_entrypoint!(entry);
+lee_core::actor_entrypoint!(handle_message);
 
 #[cfg(test)]
 mod tests {
@@ -81,7 +42,7 @@ mod tests {
         account::{AccountId, Actor, ActorState},
         program::{SyncMessage, Transition},
     };
-    use lez_admin_authority::Holder;
+    use lez_admin_authority::{AdminOp, Holder, Wire, admin_op};
 
     use super::*;
 
@@ -101,7 +62,7 @@ mod tests {
         from: Option<Actor>,
         authorized: bool,
         pre: Vec<u8>,
-        message: Message,
+        message: Wire<Message>,
     ) -> Transition {
         let input = ReceiveInput {
             receiver,
@@ -110,11 +71,11 @@ mod tests {
             pre_state: ActorState::from(pre),
             message: borsh::to_vec(&message).unwrap(),
         };
-        entry(&input, message).into_transition(input)
+        handle_message(&input, message).into_transition(input)
     }
 
     /// The sender's own actor forwards, then the config handles what it forwarded.
-    fn through_seat(sender: AccountId, pre: Vec<u8>, message: Message) -> Transition {
+    fn through_seat(sender: AccountId, pre: Vec<u8>, message: Wire<Message>) -> Transition {
         let hop = run(Actor::new(sender, PROGRAM), None, true, Vec::new(), message);
         let [SyncMessage { message, .. }] =
             <[SyncMessage; 1]>::try_from(hop.response.sync_messages).unwrap();
@@ -144,7 +105,7 @@ mod tests {
 
     #[test]
     fn the_deployer_initializes_anyone_sets_the_open_value_only_the_admin_the_other() {
-        let init = through_seat(DEPLOYER, Vec::new(), Message::Admin(AdminOp::Init));
+        let init = through_seat(DEPLOYER, Vec::new(), admin_op(AdminOp::Init));
         assert_eq!(written(&init), initialized());
 
         let open = run(
@@ -152,14 +113,14 @@ mod tests {
             None,
             false,
             borsh::to_vec(&initialized()).unwrap(),
-            Message::SetOpenValue(7),
+            Message::SetOpenValue(7).into(),
         );
         assert_eq!(written(&open).open_value, 7);
 
         let admin = through_seat(
             DEPLOYER,
             borsh::to_vec(&initialized()).unwrap(),
-            Message::SetAdminValue(9),
+            Message::SetAdminValue(9).into(),
         );
         assert_eq!(written(&admin).admin_value, 9);
     }
@@ -170,7 +131,7 @@ mod tests {
         let _transition = through_seat(
             STRANGER,
             borsh::to_vec(&initialized()).unwrap(),
-            Message::SetAdminValue(1),
+            Message::SetAdminValue(1).into(),
         );
     }
 }
