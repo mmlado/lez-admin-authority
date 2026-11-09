@@ -3722,6 +3722,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lez-admin-authority-macros"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "lez-authority"
 version = "0.1.0-alpha.1"
 source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0-alpha.1#0f956f91a6fdbdf36ad25c7b89e147d7cb61cba0"
