@@ -13,7 +13,7 @@ Who may install the first admin: the deployer, or the genesis key when the progr
 _Avoid_: bootstrap, self-election (the v0.2 rule this replaces)
 
 **Admin-only message**:
-A gated message whose arm calls `require_admin`. The program decides which of its messages are admin-only.
+A gated message that needs the admin: marked `#[only(Admin)]`, so the guard checks the admin before the handler runs. The program decides which of its messages are admin-only.
 _Avoid_: privileged instruction
 
 **Handover**:

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The `admin` attribute, in the new `lez-admin-authority-macros` crate: on a plain LEZ handler, `fn(&ReceiveInput, Message) -> Response` under `lee_core::actor_entrypoint!`, it puts lez-authority's guard in front with the admin as the role. `config`, `seed`, and `genesis` for a genesis key.
+- `admin_op`, a client's message for one of the admin's operations.
+- `Policy` for `Admin`, with lez-authority's default rules: the deployer or the genesis key installs, the admin nominates and renounces, renounce is for good.
+- lez-authority's `guard`, derives and `Wire`, re-exported, and `pub use lez_authority` for the macros to find it.
+- Sample tests for a message that came through a seat sending to another program, and for an open message sent to a seat.
+- E135 in the refusal table, from lez-authority: wherever the handler runs, its response may not send the config account a library message.
+
+### Changed
+
+- The samples are plain LEZ programs: their own enum and state, a handler under `actor_entrypoint!`, `#[only(Admin)]` on the admin-only messages, `#[from_config]` on the message the config sends to a target, and the attribute on the handler.
+- The admin's operations are library messages behind the byte 255, not variants of the program's enum. The runner sends them with `admin_op`.
+- A message that needs no admin runs wherever it is sent.
+- The overhead numbers in `docs/overhead.md`, measured again: a message at the config costs a few thousand cycles more, for the guard's second read of the config, and the admin's operations less.
+
+### Removed
+
+- `Ctx` and `AdminOp` as hosted variants, `guard_with_targets`, and the handler's context with `require_admin`, `install_admin`, `nominate`, `accept`, `renounce` and `send`.
+
 ## [0.1.0-alpha.1] - 2026-10-27
 
 ### Added
