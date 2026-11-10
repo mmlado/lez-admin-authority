@@ -4,7 +4,8 @@
 use lee::program::Program;
 use lee_core::account::{AccountId, Actor, ActorState};
 use lee_core::program::ReceiveInput;
-use lez_admin_authority::{AdminOp, AuthoritySlot, Forwarded, Holder, Hub};
+use lez_admin_authority::lez_authority::{Forwarded, LibraryMessage};
+use lez_admin_authority::{AdminOp, AuthoritySlot, Holder, Wire, admin_op};
 use risc0_zkvm::{ExecutorEnv, default_executor};
 use sample_core::{Config, Message, config_account};
 
@@ -21,7 +22,7 @@ fn config_actor() -> Actor {
     actor(config_account(PROGRAM))
 }
 
-fn input(receiver: Actor, from: Option<Actor>, authorized: bool, pre: Vec<u8>, message: &Message) -> ReceiveInput {
+fn input(receiver: Actor, from: Option<Actor>, authorized: bool, pre: Vec<u8>, message: &Wire<Message>) -> ReceiveInput {
     ReceiveInput {
         receiver,
         from,
@@ -40,12 +41,8 @@ fn run(input: &ReceiveInput) -> u64 {
     info.cycles()
 }
 
-fn forwarded(message: &Message) -> Message {
-    Message::Forwarded(Forwarded { via: None, inner: borsh::to_vec(message).unwrap() })
-}
-
-fn hub(message: &Message) -> Message {
-    Message::Hub(Hub { inner: borsh::to_vec(message).unwrap() })
+fn forwarded(message: &Wire<Message>) -> Wire<Message> {
+    Wire::Library(LibraryMessage::Forwarded(Forwarded { via: None, inner: borsh::to_vec(message).unwrap() }))
 }
 
 fn initialized() -> Vec<u8> {
@@ -59,19 +56,19 @@ fn initialized() -> Vec<u8> {
 
 #[test]
 fn cycles_per_hop() {
-    let init = Message::Admin(AdminOp::Init);
-    let set_admin = Message::SetAdminValue(9);
-    let set_target = Message::SetTargetValue { target: STRANGER, value: 5 };
-    let nominate = Message::Admin(AdminOp::Nominate { next: STRANGER });
+    let init: Wire<Message> = admin_op(AdminOp::Init);
+    let set_admin: Wire<Message> = Message::SetAdminValue(9).into();
+    let set_target: Wire<Message> = Message::SetTargetValue { target: STRANGER, value: 5 }.into();
+    let nominate: Wire<Message> = admin_op(AdminOp::Nominate { next: STRANGER });
     let rows: Vec<(&str, ReceiveInput)> = vec![
         ("seat hop, Init", input(actor(DEPLOYER), None, true, vec![], &init)),
         ("config hop, Init installs the admin", input(config_actor(), Some(actor(DEPLOYER)), false, vec![], &forwarded(&init))),
-        ("config, SetOpenValue, no hop", input(config_actor(), None, false, initialized(), &Message::SetOpenValue(7))),
+        ("config, SetOpenValue, no hop", input(config_actor(), None, false, initialized(), &Message::SetOpenValue(7).into())),
         ("seat hop, SetAdminValue", input(actor(DEPLOYER), None, true, vec![], &set_admin)),
         ("config hop, SetAdminValue", input(config_actor(), Some(actor(DEPLOYER)), false, initialized(), &forwarded(&set_admin))),
         ("config hop, Nominate", input(config_actor(), Some(actor(DEPLOYER)), false, initialized(), &forwarded(&nominate))),
         ("config hop, SetTargetValue, sends to the target", input(config_actor(), Some(actor(DEPLOYER)), false, initialized(), &forwarded(&set_target))),
-        ("target hop, TargetValue", input(actor(STRANGER), Some(config_actor()), false, vec![], &hub(&Message::TargetValue(5)))),
+        ("target hop, TargetValue", input(actor(STRANGER), Some(config_actor()), false, vec![], &Message::TargetValue(5).into())),
     ];
     println!("\n| Hop | Cycles |\n| --- | ---: |");
     let mut by_name = std::collections::BTreeMap::new();

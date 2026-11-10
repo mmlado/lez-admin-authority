@@ -35,11 +35,11 @@ How the admin slot moves between states over a program's lifetime, what each tra
 
 ## States
 
-**Uninitialized.** The config account, the PDA of the program id and the program's seed, holds no bytes. Only `Init` is accepted there, and only from the init gate. Every other message, open ones included, is refused with E101 `NotInitialized`.
+**Uninitialized.** The config account, the PDA of the program id and the program's seed, holds no bytes. Only `Init` is accepted there, and only from the init gate. Every other message at the config, open ones included, is refused with E101 `NotInitialized`.
 
-**Held.** The config exists and the slot is `AuthoritySlot::Held { holder, nominee }`. The holder is an account with its `via`: `None` for a key that signs at top level, the owning program for a PDA. Every `require_admin` compares the caller with both. The nominee, when set, is the holder's standing offer and has no powers until it accepts.
+**Held.** The config exists and the slot is `AuthoritySlot::Held { holder, nominee }`. The holder is an account with its `via`: `None` for a key that signs at top level, the owning program for a PDA. Every admin check compares the caller with both. The nominee, when set, is the holder's standing offer and has no powers until it accepts.
 
-**Renounced.** The config exists and the slot is `AuthoritySlot::Renounced`. Terminal. Every `require_admin` is E102, and so are `Accept`, `Nominate`, `Renounce` and `Init`. The rest of the config is untouched: open messages keep working.
+**Renounced.** The config exists and the slot is `AuthoritySlot::Renounced`. Terminal. Every `#[only(Admin)]` message is E102, and so are `Accept`, `Nominate`, `Renounce` and `Init`. The rest of the config is untouched: open messages keep working.
 
 `AuthoritySlot::Unset` is the slot's default value. It never reaches the chain through the guard: an empty config accepts only `Init`, which creates the config with the slot already held, and a handler cannot set the slot. It is what `Config::default()` holds in memory in the moment before `Init` installs the deployer.
 
@@ -51,7 +51,7 @@ How the admin slot moves between states over a program's lifetime, what each tra
 Uninitialized → Held { holder: { deployer, via: None }, nominee: None }
 ```
 
-**Sent by:** the deployer, the program's own account, through its seat at top level. With `InitGate::Genesis(key)`, that key instead.
+**Sent by:** the deployer, the program's own account, through its seat at top level. With `genesis = KEY` on the attribute, that key instead.
 
 **Checks:** the seat is authorized (E104), the forward comes from an actor of the program (E119), the config account is empty, the caller's account is the gated one (E117, or E115 with a genesis key), and the caller's `via` is `None` (same codes). On a non-empty config the slot decodes and `Init` is E118 on a held slot, E102 on a renounced one.
 
@@ -65,7 +65,7 @@ Held { holder: A, nominee: _ } → Held { holder: A, nominee: Some(next) }    or
 
 **Sent by:** the admin, through its seat.
 
-**Checks:** `require_admin`: not uninitialized (E101), not renounced (E102), the caller's account is the holder's (E103), the caller's `via` is the holder's (E120).
+**Checks:** the admin check: not uninitialized (E101), not renounced (E102), the caller's account is the holder's (E103), the caller's `via` is the holder's (E120).
 
 **Effect:** the nominee is recorded, replacing any earlier one. The admin does not change. Nothing is checked about `next`: it is a bare id, it need not sign or be present, and a mistyped one can never accept.
 
@@ -89,7 +89,7 @@ Held { .. } → Renounced
 
 **Sent by:** the admin, through its seat.
 
-**Checks:** `require_admin`, as for `Nominate`.
+**Checks:** the admin check, as for `Nominate`.
 
 **Effect:** the slot is `Renounced`, nominee included. Terminal.
 
@@ -101,7 +101,7 @@ Held → Held, the rest of the config changed by the handler
 
 **Sent by:** the admin, through its seat.
 
-**Checks:** the handler's `ctx.require_admin(&config.admin)`: the message came through a seat (E122), then as for `Nominate`. After the handler returns, the guard refuses a config whose slot differs from what the context left (E126).
+**Checks:** the guard's, before the handler, for a message marked `#[only(Admin)]`: the message came through a seat (E122), then as for `Nominate`. After the handler returns, the guard refuses a write whose slot changed (E126), and a library message to the config (E135).
 
 ## State detection
 
@@ -129,7 +129,7 @@ The admin is matched on both the account and the `via`. A key admin acts at top 
 
 A PDA holds the admin role after accepting a nomination through its owning program. From then on, that program sends admin-only messages to the PDA's seat by a sync call with the PDA's seed, the seat sees the grant as authorization, and the config checks the holder's `via` against the program. A multisig vault is the expected case: on threshold, the vault program sends the admin message with the vault's seed, and the whole transaction reverts if the admin hop refuses.
 
-Grants travel on sync messages only, so a vault whose execute step is an async message cannot hold the admin. The handler acting for a PDA admin reaches other actors only through `ctx.send`, which sends to actors of its own program, so the inherited grant never reaches a foreign program.
+Grants travel on sync messages only, so a vault whose execute step is an async message cannot hold the admin. The handler acting for a PDA admin, and every program it calls, holds the admin's authority for that call, so make the admin a PDA that holds no assets and no other role.
 
 Both PDA paths, accept and act, are covered by host tests in both repos. They have not run on a sequencer yet: that needs a second program to play the owner.
 

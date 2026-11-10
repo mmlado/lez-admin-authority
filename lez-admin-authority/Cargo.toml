@@ -8,6 +8,5 @@ repository = "https://github.com/mmlado/lez-admin-authority"
 readme = "../README.md"
 
 [dependencies]
-borsh.workspace = true
-lee_core.workspace = true
+lez-admin-authority-macros = { path = "../lez-admin-authority-macros" }
 lez-authority.workspace = true

@@ -1,59 +1,57 @@
-//! Sample program: two values on the config, two setters, one of them for the admin only,
-//! and a per-account value the admin sets through the hub.
+//! Sample program, written as a plain LEZ program: two values on the config, two setters, one
+//! of them for the admin only, and a per-account value the admin sets on another actor of the
+//! program.
 //!
-//! The config lives on the config account, a PDA of the program id and `CONFIG_SEED`.
-//! Messages that need the admin go to the sender's own actor first, which vouches for
-//! the sender and forwards them to the config. The guard does that hop, hands the handler
-//! a context, and checks afterwards that the admin slot changed only through it.
-//!
-//! The `Admin(..)` operations are the library's: the guard runs them and the handler never
-//! sees them. Only the deployer, the program's own account, sends `Init`, because the
+//! The config lives on the config account, a PDA of the program id and `CONFIG_SEED`. The
+//! attribute puts the guard in front of the handler. A message marked `#[only(Admin)]` goes to
+//! the sender's own actor first, which vouches for the sender and forwards it to the config,
+//! where the guard checks the admin before the handler runs. The admin's operations never
+//! reach the handler. Only the deployer, the program's own account, sends `Init`, because the
 //! program id is the loader header account and the deployer holds its key. Until then every
-//! other message is refused. The first write to the config account needs
+//! message at the config is refused. The first write to the config account needs
 //! `PublicAccountEvidence::Pda { program, seed }` in the transaction.
 
+use borsh::BorshDeserialize;
+use lee_core::account::Actor;
 use lee_core::program::{ReceiveInput, Response};
-use lez_admin_authority::{Ctx, InitGate};
 use sample_core::{CONFIG_SEED, Config, Message, TargetState};
 
-fn handle_message(ctx: &mut Ctx, config: &mut Config, message: Message) {
+#[lez_admin_authority::admin(config = Config, seed = CONFIG_SEED)]
+fn handle_message(input: &ReceiveInput, message: Message) -> Response {
     match message {
-        Message::SetOpenValue(value) => config.open_value = value,
+        Message::SetOpenValue(value) => {
+            let mut config: Config = state(input);
+            config.open_value = value;
+            Response::set_state(borsh::to_vec(&config).expect("the config encodes"))
+        }
         Message::SetAdminValue(value) => {
-            ctx.require_admin(&config.admin);
+            let mut config: Config = state(input);
             config.admin_value = value;
+            Response::set_state(borsh::to_vec(&config).expect("the config encodes"))
         }
         Message::SetTargetValue { target, value } => {
-            ctx.require_admin(&config.admin);
-            ctx.send(target, &Message::TargetValue(value));
+            let target = Actor::new(target, input.receiver.program_account_id);
+            Response::keep_state().send_sync(target, &Message::TargetValue(value))
         }
-        Message::TargetValue(_) => panic!("TargetValue reaches a target through the hub only"),
-        Message::Admin(_) | Message::Forwarded(_) | Message::Hub(_) => {
-            unreachable!("the guard handles the library's variants")
+        Message::TargetValue(value) => {
+            let mut target: TargetState = state(input);
+            target.value = value;
+            Response::set_state(borsh::to_vec(&target).expect("the target state encodes"))
         }
     }
 }
 
-/// At a target, for what the config sent through the hub.
-fn handle_target(state: &mut TargetState, message: Message) {
-    match message {
-        Message::TargetValue(value) => state.value = value,
-        other => panic!("not a target message: {other:?}"),
+/// The actor's state, or the default on an account that holds none yet.
+fn state<T: Default + BorshDeserialize>(input: &ReceiveInput) -> T {
+    let pre: &[u8] = &input.pre_state;
+    if pre.is_empty() {
+        T::default()
+    } else {
+        borsh::from_slice(pre).expect("the state decodes")
     }
 }
 
-fn entry(input: &ReceiveInput, message: Message) -> Response {
-    lez_admin_authority::guard_with_targets(
-        input,
-        &CONFIG_SEED,
-        InitGate::Deployer,
-        message,
-        handle_message,
-        handle_target,
-    )
-}
-
-lee_core::actor_entrypoint!(entry);
+lee_core::actor_entrypoint!(handle_message);
 
 #[cfg(test)]
 mod tests {
@@ -61,7 +59,8 @@ mod tests {
         account::{AccountId, Actor, ActorState},
         program::{SyncMessage, Transition},
     };
-    use lez_admin_authority::{AdminOp, AuthoritySlot, Forwarded, Holder, Hub};
+    use lez_admin_authority::lez_authority::{Forwarded, LibraryMessage};
+    use lez_admin_authority::{AdminOp, AuthoritySlot, Holder, InitGate, Wire, admin_op};
     use sample_core::config_account;
 
     use super::*;
@@ -119,7 +118,7 @@ mod tests {
         from: Option<Actor>,
         is_authorized: bool,
         pre: Vec<u8>,
-        message: &Message,
+        message: &Wire<Message>,
     ) -> ReceiveInput {
         ReceiveInput {
             receiver,
@@ -135,13 +134,13 @@ mod tests {
         from: Option<Actor>,
         is_authorized: bool,
         pre: Vec<u8>,
-        message: Message,
+        message: Wire<Message>,
     ) -> Transition {
         let input = input(receiver, from, is_authorized, pre, &message);
-        entry(&input, message).into_transition(input)
+        handle_message(&input, message).into_transition(input)
     }
 
-    fn at_config_from(from: Option<Actor>, pre: Vec<u8>, message: Message) -> Transition {
+    fn at_config_from(from: Option<Actor>, pre: Vec<u8>, message: Wire<Message>) -> Transition {
         run(config_actor(), from, false, pre, message)
     }
 
@@ -151,7 +150,7 @@ mod tests {
         from: Option<Actor>,
         is_authorized: bool,
         pre: Vec<u8>,
-        message: Message,
+        message: Wire<Message>,
     ) -> Transition {
         let hop = run(actor(seat), from, is_authorized, Vec::new(), message);
         assert!(
@@ -178,22 +177,16 @@ mod tests {
         borsh::from_slice(state).expect("the config decodes")
     }
 
-    fn forwarded(via: Option<AccountId>, message: &Message) -> Message {
-        Message::Forwarded(Forwarded {
+    fn forwarded(via: Option<AccountId>, message: &Wire<Message>) -> Wire<Message> {
+        Wire::Library(LibraryMessage::Forwarded(Forwarded {
             via,
             inner: borsh::to_vec(message).unwrap(),
-        })
+        }))
     }
 
     #[test]
     fn init_through_the_seat_installs_the_sender_as_admin() {
-        let transition = through_seat(
-            DEPLOYER,
-            None,
-            true,
-            Vec::new(),
-            Message::Admin(AdminOp::Init),
-        );
+        let transition = through_seat(DEPLOYER, None, true, Vec::new(), admin_op(AdminOp::Init));
         assert_eq!(written(&transition), initialized());
     }
 
@@ -204,13 +197,13 @@ mod tests {
             None,
             true,
             Vec::new(),
-            Message::Admin(AdminOp::Init),
+            admin_op(AdminOp::Init),
         );
         assert_eq!(
             transition.response.sync_messages,
             vec![SyncMessage::new(
                 config_actor(),
-                &forwarded(None, &Message::Admin(AdminOp::Init))
+                &forwarded(None, &admin_op(AdminOp::Init))
             )]
         );
     }
@@ -223,43 +216,34 @@ mod tests {
             None,
             false,
             Vec::new(),
-            Message::Admin(AdminOp::Init),
+            admin_op(AdminOp::Init),
         );
     }
 
     #[test]
     #[should_panic(expected = "must go through the sender's own actor")]
     fn init_sent_straight_to_the_config_is_refused() {
-        let _transition = at_config_from(None, Vec::new(), Message::Admin(AdminOp::Init));
+        let _transition = at_config_from(None, Vec::new(), admin_op(AdminOp::Init));
     }
 
     #[test]
     #[should_panic(expected = "only comes from this program's own actor")]
     fn a_forged_forward_sent_straight_to_the_config_is_refused() {
-        let _transition = at_config_from(
-            None,
-            Vec::new(),
-            forwarded(None, &Message::Admin(AdminOp::Init)),
-        );
+        let _transition =
+            at_config_from(None, Vec::new(), forwarded(None, &admin_op(AdminOp::Init)));
     }
 
     #[test]
     #[should_panic(expected = "forwarded messages are only handled at the config account")]
     fn a_forward_sent_to_a_seat_is_refused() {
-        let message = forwarded(None, &Message::Admin(AdminOp::Init));
+        let message = forwarded(None, &admin_op(AdminOp::Init));
         let _transition = run(actor(DEPLOYER), None, true, Vec::new(), message);
     }
 
     #[test]
     #[should_panic(expected = "only the deployer installs the first admin")]
     fn init_by_another_account_is_refused() {
-        let _transition = through_seat(
-            STRANGER,
-            None,
-            true,
-            Vec::new(),
-            Message::Admin(AdminOp::Init),
-        );
+        let _transition = through_seat(STRANGER, None, true, Vec::new(), admin_op(AdminOp::Init));
     }
 
     #[test]
@@ -271,19 +255,24 @@ mod tests {
             Some(governance),
             true,
             Vec::new(),
-            Message::Admin(AdminOp::Init),
+            admin_op(AdminOp::Init),
         );
     }
 
-    fn entry_with_genesis(input: &ReceiveInput, message: Message) -> Response {
-        let gate = InitGate::Genesis(GENESIS);
-        lez_admin_authority::guard(input, &CONFIG_SEED, gate, message, handle_message)
+    /// The same program with a genesis key. Its handler never runs for an operation.
+    #[lez_admin_authority::admin(config = Config, seed = CONFIG_SEED, genesis = GENESIS)]
+    fn handle_with_genesis(_input: &ReceiveInput, _message: Message) -> Response {
+        Response::keep_state()
     }
 
-    fn through_seat_with_genesis(seat: AccountId, pre: Vec<u8>, message: Message) -> Transition {
-        let run = |receiver: Actor, from: Option<Actor>, pre: Vec<u8>, message: Message| {
+    fn through_seat_with_genesis(
+        seat: AccountId,
+        pre: Vec<u8>,
+        message: Wire<Message>,
+    ) -> Transition {
+        let run = |receiver: Actor, from: Option<Actor>, pre: Vec<u8>, message: Wire<Message>| {
             let input = input(receiver, from, true, pre, &message);
-            entry_with_genesis(&input, message).into_transition(input)
+            handle_with_genesis(&input, message).into_transition(input)
         };
         let hop = run(actor(seat), None, Vec::new(), message);
         let [SyncMessage { message, .. }] =
@@ -299,16 +288,14 @@ mod tests {
 
     #[test]
     fn with_a_genesis_key_that_key_installs_itself() {
-        let transition =
-            through_seat_with_genesis(GENESIS, Vec::new(), Message::Admin(AdminOp::Init));
+        let transition = through_seat_with_genesis(GENESIS, Vec::new(), admin_op(AdminOp::Init));
         assert_eq!(written(&transition).admin, held(GENESIS, None));
     }
 
     #[test]
     #[should_panic(expected = "only the genesis key installs the first admin")]
     fn with_a_genesis_key_the_deployer_is_refused() {
-        let _transition =
-            through_seat_with_genesis(DEPLOYER, Vec::new(), Message::Admin(AdminOp::Init));
+        let _transition = through_seat_with_genesis(DEPLOYER, Vec::new(), admin_op(AdminOp::Init));
     }
 
     #[test]
@@ -319,13 +306,14 @@ mod tests {
             None,
             true,
             bytes(&initialized()),
-            Message::Admin(AdminOp::Init),
+            admin_op(AdminOp::Init),
         );
     }
 
     #[test]
     fn anyone_sets_the_open_value() {
-        let transition = at_config_from(None, bytes(&initialized()), Message::SetOpenValue(7));
+        let transition =
+            at_config_from(None, bytes(&initialized()), Message::SetOpenValue(7).into());
         let expected = Config {
             open_value: 7,
             ..initialized()
@@ -336,17 +324,21 @@ mod tests {
     #[test]
     #[should_panic(expected = "the config account is not initialized")]
     fn before_init_even_an_open_message_is_refused() {
-        let _transition = at_config_from(None, Vec::new(), Message::SetOpenValue(7));
+        let _transition = at_config_from(None, Vec::new(), Message::SetOpenValue(7).into());
     }
 
     #[test]
-    fn an_open_message_through_a_seat_works_too() {
-        let transition = through_seat(
-            STRANGER,
+    fn an_open_message_sent_to_a_seat_runs_there() {
+        let transition = run(
+            actor(STRANGER),
             None,
             true,
-            bytes(&initialized()),
-            Message::SetOpenValue(3),
+            Vec::new(),
+            Message::SetOpenValue(3).into(),
+        );
+        assert!(
+            transition.response.sync_messages.is_empty(),
+            "nothing is forwarded"
         );
         assert_eq!(written(&transition).open_value, 3);
     }
@@ -354,7 +346,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "the config account is not initialized")]
     fn before_init_the_admin_value_is_locked() {
-        let _transition = through_seat(DEPLOYER, None, true, Vec::new(), Message::SetAdminValue(1));
+        let _transition = through_seat(
+            DEPLOYER,
+            None,
+            true,
+            Vec::new(),
+            Message::SetAdminValue(1).into(),
+        );
     }
 
     #[test]
@@ -364,7 +362,7 @@ mod tests {
             None,
             true,
             bytes(&initialized()),
-            Message::SetAdminValue(9),
+            Message::SetAdminValue(9).into(),
         );
         let expected = Config {
             admin_value: 9,
@@ -381,14 +379,18 @@ mod tests {
             None,
             true,
             bytes(&initialized()),
-            Message::SetAdminValue(9),
+            Message::SetAdminValue(9).into(),
         );
     }
 
     #[test]
     #[should_panic(expected = "must go through the sender's own actor")]
     fn an_admin_message_sent_straight_to_the_config_is_refused() {
-        let _transition = at_config_from(None, bytes(&initialized()), Message::SetAdminValue(9));
+        let _transition = at_config_from(
+            None,
+            bytes(&initialized()),
+            Message::SetAdminValue(9).into(),
+        );
     }
 
     // The admin signed a transaction rooted in some other program, which then reached the
@@ -402,7 +404,7 @@ mod tests {
             Some(other),
             true,
             bytes(&initialized()),
-            Message::SetAdminValue(9),
+            Message::SetAdminValue(9).into(),
         );
     }
 
@@ -419,7 +421,7 @@ mod tests {
             Some(governance),
             true,
             bytes(&pda_admin),
-            Message::SetAdminValue(9),
+            Message::SetAdminValue(9).into(),
         );
         assert_eq!(written(&transition).admin_value, 9);
     }
@@ -436,7 +438,7 @@ mod tests {
             None,
             true,
             bytes(&pda_admin),
-            Message::SetAdminValue(9),
+            Message::SetAdminValue(9).into(),
         );
     }
 
@@ -449,7 +451,7 @@ mod tests {
             Some(governance),
             false,
             bytes(&initialized()),
-            Message::SetAdminValue(9),
+            Message::SetAdminValue(9).into(),
         );
     }
 
@@ -465,7 +467,7 @@ mod tests {
             None,
             true,
             bytes(&pre),
-            Message::Admin(AdminOp::Renounce),
+            admin_op(AdminOp::Renounce),
         );
         let expected = Config {
             admin: AuthoritySlot::Renounced,
@@ -481,8 +483,13 @@ mod tests {
             admin: AuthoritySlot::Renounced,
             ..initialized()
         };
-        let _transition =
-            through_seat(DEPLOYER, None, true, bytes(&pre), Message::SetAdminValue(1));
+        let _transition = through_seat(
+            DEPLOYER,
+            None,
+            true,
+            bytes(&pre),
+            Message::SetAdminValue(1).into(),
+        );
     }
 
     #[test]
@@ -492,18 +499,12 @@ mod tests {
             admin: AuthoritySlot::Renounced,
             ..initialized()
         };
-        let _transition = through_seat(
-            DEPLOYER,
-            None,
-            true,
-            bytes(&pre),
-            Message::Admin(AdminOp::Init),
-        );
+        let _transition = through_seat(DEPLOYER, None, true, bytes(&pre), admin_op(AdminOp::Init));
     }
 
     #[test]
     fn the_admin_nominates_and_nothing_moves_yet() {
-        let message = Message::Admin(AdminOp::Nominate { next: STRANGER });
+        let message = admin_op(AdminOp::Nominate { next: STRANGER });
         let transition = through_seat(DEPLOYER, None, true, bytes(&initialized()), message);
         assert_eq!(written(&transition), nominated());
 
@@ -513,7 +514,7 @@ mod tests {
                 None,
                 true,
                 bytes(&nominated()),
-                Message::SetAdminValue(1),
+                Message::SetAdminValue(1).into(),
             )
         });
         assert!(early.is_err(), "the nominee cannot act before accepting");
@@ -522,13 +523,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "the signing account is not the admin")]
     fn a_stranger_cannot_nominate() {
-        let message = Message::Admin(AdminOp::Nominate { next: STRANGER });
+        let message = admin_op(AdminOp::Nominate { next: STRANGER });
         let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), message);
     }
 
     #[test]
     fn the_nominee_accepts_and_the_old_admin_is_out() {
-        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let accept = admin_op(AdminOp::Accept { pda_seed: None });
         let transition = through_seat(STRANGER, None, true, bytes(&nominated()), accept);
         let handed_over = Config {
             admin: held(STRANGER, None),
@@ -542,7 +543,7 @@ mod tests {
                 None,
                 true,
                 bytes(&handed_over),
-                Message::SetAdminValue(2),
+                Message::SetAdminValue(2).into(),
             )
         });
         assert!(old.is_err(), "the old admin is refused after the handover");
@@ -551,7 +552,7 @@ mod tests {
             None,
             true,
             bytes(&handed_over),
-            Message::SetAdminValue(3),
+            Message::SetAdminValue(3).into(),
         );
         assert_eq!(written(&new).admin_value, 3);
     }
@@ -559,7 +560,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "no admin nominee is pending")]
     fn accept_without_a_nomination_is_refused() {
-        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let accept = admin_op(AdminOp::Accept { pda_seed: None });
         let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), accept);
     }
 
@@ -567,7 +568,7 @@ mod tests {
     #[should_panic(expected = "the signing account is not the nominated admin")]
     fn only_the_nominee_accepts() {
         let other = AccountId::new([7; 32]);
-        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let accept = admin_op(AdminOp::Accept { pda_seed: None });
         let _transition = through_seat(other, None, true, bytes(&nominated()), accept);
     }
 
@@ -580,7 +581,7 @@ mod tests {
             admin: held_with_nominee(pda),
             ..initialized()
         };
-        let accept = Message::Admin(AdminOp::Accept {
+        let accept = admin_op(AdminOp::Accept {
             pda_seed: Some(seed),
         });
         let governance = Actor::new(vault, GOVERNANCE);
@@ -596,21 +597,21 @@ mod tests {
             admin: held_with_nominee(pda),
             ..initialized()
         };
-        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let accept = admin_op(AdminOp::Accept { pda_seed: None });
         let governance = Actor::new(STRANGER, GOVERNANCE);
         let _transition = through_seat(pda, Some(governance), true, bytes(&pre), accept);
     }
 
     #[test]
     fn a_nomination_can_be_cancelled_and_replaced() {
-        let cancel = Message::Admin(AdminOp::Nominate {
+        let cancel = admin_op(AdminOp::Nominate {
             next: AccountId::default(),
         });
         let transition = through_seat(DEPLOYER, None, true, bytes(&nominated()), cancel);
         assert_eq!(written(&transition), initialized());
 
         let other = AccountId::new([7; 32]);
-        let replace = Message::Admin(AdminOp::Nominate { next: other });
+        let replace = admin_op(AdminOp::Nominate { next: other });
         let transition = through_seat(DEPLOYER, None, true, bytes(&nominated()), replace);
         assert_eq!(written(&transition).admin.nominee(), Some(other));
     }
@@ -623,17 +624,11 @@ mod tests {
             None,
             true,
             bytes(&nominated()),
-            Message::Admin(AdminOp::Renounce),
+            admin_op(AdminOp::Renounce),
         );
         assert_eq!(written(&transition).admin, AuthoritySlot::Renounced);
-        let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+        let accept = admin_op(AdminOp::Accept { pda_seed: None });
         let _transition = through_seat(STRANGER, None, true, bytes(&written(&transition)), accept);
-    }
-
-    fn hub(message: &Message) -> Message {
-        Message::Hub(Hub {
-            inner: borsh::to_vec(message).unwrap(),
-        })
     }
 
     #[test]
@@ -642,13 +637,12 @@ mod tests {
             target: STRANGER,
             value: 5,
         };
-        let at_config = through_seat(DEPLOYER, None, true, bytes(&initialized()), message);
-        assert_eq!(
-            written(&at_config),
-            initialized(),
+        let at_config = through_seat(DEPLOYER, None, true, bytes(&initialized()), message.into());
+        assert!(
+            at_config.response.post_state.is_none(),
             "the config itself is unchanged"
         );
-        let expected = SyncMessage::new(actor(STRANGER), &hub(&Message::TargetValue(5)));
+        let expected = SyncMessage::new(actor(STRANGER), &Message::TargetValue(5));
         assert_eq!(at_config.response.sync_messages, vec![expected]);
 
         let at_target = run(
@@ -656,7 +650,7 @@ mod tests {
             Some(config_actor()),
             false,
             Vec::new(),
-            hub(&Message::TargetValue(5)),
+            Message::TargetValue(5).into(),
         );
         let state: TargetState =
             borsh::from_slice(at_target.response.post_state.as_ref().unwrap()).unwrap();
@@ -670,83 +664,94 @@ mod tests {
             target: STRANGER,
             value: 5,
         };
-        let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), message);
+        let _transition = through_seat(STRANGER, None, true, bytes(&initialized()), message.into());
     }
 
     #[test]
-    #[should_panic(expected = "a hub message comes only from the config account")]
+    #[should_panic(expected = "this message comes only from the config account")]
     fn a_hub_message_sent_straight_to_a_target_is_refused() {
         let _transition = run(
             actor(STRANGER),
             None,
             false,
             Vec::new(),
-            hub(&Message::TargetValue(5)),
+            Message::TargetValue(5).into(),
         );
     }
 
     #[test]
-    #[should_panic(expected = "a hub message comes only from the config account")]
+    #[should_panic(expected = "this message comes only from the config account")]
     fn a_hub_message_from_another_actor_of_the_program_is_refused() {
-        let message = hub(&Message::TargetValue(5));
         let _transition = run(
             actor(STRANGER),
             Some(actor(DEPLOYER)),
             false,
             Vec::new(),
-            message,
+            Message::TargetValue(5).into(),
         );
     }
 
     #[test]
-    #[should_panic(expected = "a hub message comes only from the config account")]
+    #[should_panic(expected = "this message comes only from the config account")]
     fn a_hub_message_at_the_config_is_refused() {
-        let message = hub(&Message::TargetValue(5));
-        let _transition = at_config_from(Some(actor(DEPLOYER)), bytes(&initialized()), message);
+        let _transition = at_config_from(
+            Some(actor(DEPLOYER)),
+            bytes(&initialized()),
+            Message::TargetValue(5).into(),
+        );
     }
 
     #[test]
-    #[should_panic(expected = "through the hub only")]
+    #[should_panic(expected = "this message comes only from the config account")]
     fn a_target_value_sent_through_a_seat_is_refused() {
         let _transition = through_seat(
             DEPLOYER,
             None,
             true,
             bytes(&initialized()),
-            Message::TargetValue(5),
+            Message::TargetValue(5).into(),
         );
     }
 
-    #[test]
-    #[should_panic(expected = "sending to a target needs the admin")]
-    fn send_needs_the_admin_check_first() {
-        let message = Message::SetOpenValue(1);
-        let input = input(config_actor(), None, false, bytes(&initialized()), &message);
-        let _response = lez_admin_authority::guard_with_targets(
+    /// The admin's own message, through the deployer's seat, handled by `handler`.
+    fn admin_message_handled_by(handler: fn(&ReceiveInput, Message) -> Response) -> Response {
+        let hop = forwarded(None, &Message::SetAdminValue(1).into());
+        let input = input(
+            config_actor(),
+            Some(actor(DEPLOYER)),
+            false,
+            bytes(&initialized()),
+            &hop,
+        );
+        lez_admin_authority::guard::<(lez_admin_authority::Admin,), Config, Message>(
             &input,
             &CONFIG_SEED,
             InitGate::Deployer,
-            message,
-            |ctx: &mut Ctx, _config: &mut Config, _message| {
-                ctx.send(STRANGER, &Message::TargetValue(1));
-            },
-            handle_target,
-        );
+            hop,
+            handler,
+        )
     }
 
     #[test]
-    #[should_panic(expected = "must not change the admin slot except through the context")]
+    fn the_admin_s_message_may_call_another_program() {
+        let response = admin_message_handled_by(|_input, message| {
+            Response::keep_state().send_sync(Actor::new(STRANGER, GOVERNANCE), &message)
+        });
+        let [sent] = response.sync_messages.as_slice() else {
+            panic!("one message to the other program");
+        };
+        assert_eq!(sent.to, Actor::new(STRANGER, GOVERNANCE));
+    }
+
+    #[test]
+    #[should_panic(expected = "a handler must not change the admin slot")]
     fn a_handler_that_overwrites_the_slot_is_refused() {
-        let message = Message::SetOpenValue(1);
-        let input = input(config_actor(), None, false, bytes(&initialized()), &message);
-        let _response = lez_admin_authority::guard(
-            &input,
-            &CONFIG_SEED,
-            InitGate::Deployer,
-            message,
-            |_ctx: &mut Ctx, config: &mut Config, _message| {
-                config.admin = AuthoritySlot::Unset;
-            },
-        );
+        let _response = admin_message_handled_by(|_input, _message| {
+            let config = Config {
+                admin: AuthoritySlot::Unset,
+                ..initialized()
+            };
+            Response::set_state(borsh::to_vec(&config).unwrap())
+        });
     }
 }

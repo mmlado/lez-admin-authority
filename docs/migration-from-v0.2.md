@@ -17,18 +17,18 @@ For a program on [spel-admin-authority](https://github.com/mmlado/spel-admin-aut
 
 | v0.2 | 0.4 | Note |
 | --- | --- | --- |
-| `#[admin_authority]` on the module | `HasSlot<Admin>` on your config, `Hosts` on your message enum | no macro at level 1 |
-| `#[require_admin]` on an instruction | `ctx.require_admin(&config.admin)` first in the arm | same place, same meaning |
-| `#[admin_slot]` on the embedded field | `HasSlot<Admin>` pointing at the field | embedded is the only mode |
+| `#[admin_authority]` on the module | `#[lez_admin_authority::admin(config = .., seed = ..)]` on your handler, `#[derive(HasSlot)]` on your config, `#[derive(Gated)]` on your message enum | the handler stays a plain LEZ handler |
+| `#[require_admin]` on an instruction | `#[only(Admin)]` on the message | the guard checks it before the handler |
+| `#[admin_slot]` on the embedded field | `#[slot(Admin)]` on the field | embedded is the only mode |
 | `AdminConfig`, 64 bytes, admin then nominee | `AuthoritySlot`, a Borsh enum: unset, held with its nominee, renounced | the holder carries its `via` |
 | The Config PDA at `(program_id, "admin_config")` | Your config account at `(program, your seed)`, holding your whole config | one account, your layout |
 | Embedded mode with `offset` | The default and only shape | no offset, Borsh finds the field |
 | `admin_initialize`, self-election | `AdminOp::Init` from the deployer's seat | the init gate closes the race |
-| `SPEL_ADMIN_GENESIS` at build time | `InitGate::Genesis(AccountId)` in code | compiled in, part of the program id |
+| `SPEL_ADMIN_GENESIS` at build time | `genesis = KEY` on the attribute | compiled in, part of the program id |
 | `admin_transfer` with `AdminCandidate` and a co-signer | gone, use nominate and accept | a PDA cannot co-sign |
 | `admin_nominate`, `admin_accept` | `AdminOp::Nominate { next }`, `AdminOp::Accept { pda_seed }` | the PDA accept carries its seed |
 | `admin_renounce` | `AdminOp::Renounce` | terminal, as before |
-| Five injected instructions in the IDL | Four operations hosted in one variant of your enum, `Admin(AdminOp)` | plus `Forwarded`, and `Hub` with targets |
+| Five injected instructions in the IDL | Four library messages a client builds with `admin_op` | they start with the byte 255, your enum hosts none of them |
 | `AdminError`, `6000 + code` on the client | `AuthorityError`, `lez-authority/admin E<code>: <text>` in the sequencer log | numbers kept where the meaning is the same |
 | `caller-pda-seeds` on a chained call | `pda_seeds` on the owning program's sync message | the seat sees the grant as authorization |
 | `UnownedSigner`, `wallet auth-transfer init` | no counterpart | fresh keys signed repeatedly on the dev stack |
@@ -51,16 +51,20 @@ pub fn update_value(
 }
 ```
 
-The same in 0.4, one arm of the handler:
+The same in 0.4, one marked variant of the message enum and one arm of the plain handler:
 
 ```rust
+#[only(Admin)]
+UpdateValue(u64),
+
 Message::UpdateValue(new_value) => {
-    ctx.require_admin(&config.admin);
+    let mut config: Config = borsh::from_slice(&input.pre_state).expect("the config decodes");
     config.value = new_value;
+    Response::set_state(borsh::to_vec(&config).expect("the config encodes"))
 }
 ```
 
-The accounts are gone from the signature: the config is the state the handler receives, and the caller is what the context knows from the hop. The client, instead of listing `admin_config`, `caller` and `config`, lists the admin's seat and the config account as the actors of one transaction.
+The accounts are gone from the signature: the config is the state of the actor the handler runs at, and the caller is what the guard knows from the hop. The client, instead of listing `admin_config`, `caller` and `config`, lists the admin's seat and the config account as the actors of one transaction.
 
 ## Error codes
 
@@ -84,19 +88,19 @@ Numbers up to 116 follow the v0.2 table where a refusal has the same meaning. Th
 | 114 | `NotNominee` | `NotNominee` |
 | 115 | `NotGenesisAdmin` | `NotGenesis` |
 | 116 | `ConfigNotOwned` | retired, the config account is the program's own actor |
-| 117 to 133 | | new, the routing refusals: see the [table](https://github.com/mmlado/lez-authority#refusals) |
+| 117 to 135 | | new, the routing refusals: see the [table](https://github.com/mmlado/lez-authority#refusals) |
 
 ## Steps
 
-1. **One config struct.** Collect what the program kept on its accounts into one Borsh struct with `Default`, and add the `AuthoritySlot` field with `HasSlot<Admin>`. State that belongs to other accounts, such as a per-user value, stays on those accounts as a target state, written through the hub.
-2. **One message enum.** One variant per instruction, with the instruction's arguments as fields and no accounts. Add `Admin(AdminOp)` and `Forwarded(Forwarded)`, and `Hub(Hub)` if step 1 left targets. Implement `Hosts`.
-3. **The handler.** One `match` arm per variant. Where the instruction had `#[require_admin]`, call `ctx.require_admin(&config.admin)` first. Where it wrote another account, call `ctx.send(target, &message)` after the check and handle the message in the target handler.
-4. **The entry.** `guard` or `guard_with_targets` with your seed and the init gate, then `actor_entrypoint!`.
+1. **One config struct.** Collect what the program kept on its accounts into one Borsh struct with `Default`, and add the `AuthoritySlot` field marked `#[slot(Admin)]`, deriving `HasSlot`. State that belongs to other accounts, such as a per-user value, stays on those accounts, written by messages the config sends.
+2. **One message enum.** One variant per instruction, with the instruction's arguments as fields and no accounts. Derive `Gated`, mark each message whose instruction had `#[require_admin]` with `#[only(Admin)]`, and each message the config sends to another account with `#[from_config]`.
+3. **The handler.** A plain LEZ handler, `fn(&ReceiveInput, Message) -> Response`, one `match` arm per variant. Marked messages reach it already checked. Where the instruction wrote another account, the arm's response sends a `#[from_config]` message to that account's actor, and the arm for that message writes it there.
+4. **The entry.** `#[lez_admin_authority::admin(config = Config, seed = CONFIG_SEED)]` on the handler, then `lee_core::actor_entrypoint!(handle_message)`.
 5. **Drop SPEL.** `spel-framework`, `admin-authority` and the macros go. The dependencies are `borsh`, `lee_core` at the pinned commit, and `lez-admin-authority`.
 6. **Build the guest** through a methods crate with `risc0_build::embed_methods`, as `sample/methods` does, with the risc0 toolchain at 3.0.5.
-7. **Deploy immutable and send `Init`** from the deployer's seat. Then nominate the admin the program should have, and have it accept.
-8. **Clients.** Replace IDL-driven calls with transactions from the LEZ wallet library: the root actor, the actors reached, the signer, and the Borsh-encoded message. The README's transaction shapes and the runner show each one. Read the config back after each call: a refusal is a reverted, charged transaction with its text in the sequencer log.
+7. **Deploy immutable and send `Init`** from the deployer's seat, as `admin_op(AdminOp::Init)`. Then nominate the admin the program should have, and have it accept.
+8. **Clients.** Replace IDL-driven calls with transactions from the LEZ wallet library: the root actor, the actors reached, the signer, and the message: Borsh for your enum, `admin_op` for the admin's operations. The README's transaction shapes and the runner show each one. Read the config back after each call: a refusal is a reverted, charged transaction with its text in the sequencer log.
 
 ## Not there yet
 
-A one-step transfer, a CLI and an IDL, macros, the SPEL shim, and the freeze role. See the README's [Not in this release](../README.md#not-in-this-release).
+A one-step transfer, a CLI and an IDL, the SPEL shim, and the freeze role. See the README's [Not in this release](../README.md#not-in-this-release).

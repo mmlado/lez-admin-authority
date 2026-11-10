@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use lee_core::account::{AccountId, Actor};
-use lez_admin_authority::{AdminOp, AuthoritySlot, Holder};
+use lez_admin_authority::{AdminOp, AuthoritySlot, Holder, Wire, admin_op};
 use sample_core::{CONFIG_SEED, Config, Message, TargetState, config_account};
 use wallet::{
     AccountIdentity, AccountMention, WalletCore, program_facades::program_loader::ProgramLoader,
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(stranger), config()],
-        &Message::Admin(AdminOp::Init),
+        &admin_op(AdminOp::Init),
         "stranger init",
     )
     .await?;
@@ -87,7 +87,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(deployer), config()],
-        &Message::Admin(AdminOp::Init),
+        &admin_op(AdminOp::Init),
         "init",
     )
     .await?;
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![config()],
-        &Message::SetOpenValue(7),
+        &Message::SetOpenValue(7).into(),
         "open setter",
     )
     .await?;
@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(deployer), config()],
-        &Message::SetAdminValue(9),
+        &Message::SetAdminValue(9).into(),
         "admin setter",
     )
     .await?;
@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(deployer), config(), target(stranger)],
-        &set_target,
+        &set_target.into(),
         "target setter",
     )
     .await?;
@@ -166,7 +166,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(stranger), config()],
-        &Message::SetAdminValue(1),
+        &Message::SetAdminValue(1).into(),
         "stranger",
     )
     .await?;
@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
     .await?;
 
     // Handover: the admin nominates, nothing moves, the nominee accepts through its own seat.
-    let nominate = Message::Admin(AdminOp::Nominate { next: nominee });
+    let nominate = admin_op(AdminOp::Nominate { next: nominee });
     call(
         &wallet,
         payer,
@@ -204,7 +204,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(nominee), config()],
-        &Message::SetAdminValue(1),
+        &Message::SetAdminValue(1).into(),
         "nominee before accept",
     )
     .await?;
@@ -216,7 +216,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    let accept = Message::Admin(AdminOp::Accept { pda_seed: None });
+    let accept = admin_op(AdminOp::Accept { pda_seed: None });
     call(
         &wallet,
         payer,
@@ -238,7 +238,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(nominee), config()],
-        &Message::SetAdminValue(11),
+        &Message::SetAdminValue(11).into(),
         "new admin setter",
     )
     .await?;
@@ -258,7 +258,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(deployer), config()],
-        &Message::SetAdminValue(2),
+        &Message::SetAdminValue(2).into(),
         "old admin",
     )
     .await?;
@@ -274,7 +274,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(nominee), config()],
-        &Message::Admin(AdminOp::Renounce),
+        &admin_op(AdminOp::Renounce),
         "renounce",
     )
     .await?;
@@ -288,7 +288,7 @@ async fn main() -> Result<()> {
         &wallet,
         payer,
         vec![seat(nominee), config()],
-        &Message::SetAdminValue(3),
+        &Message::SetAdminValue(3).into(),
         "after renounce",
     )
     .await?;
@@ -311,7 +311,7 @@ async fn call(
     wallet: &WalletCore,
     payer: AccountId,
     accounts: Vec<AccountMention>,
-    message: &Message,
+    message: &Wire<Message>,
     what: &str,
 ) -> Result<()> {
     let bytes = borsh::to_vec(message)?;
