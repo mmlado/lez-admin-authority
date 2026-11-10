@@ -1140,21 +1140,43 @@ dependencies = [
 
 [[package]]
 name = "lez-admin-authority"
-version = "0.1.0-alpha.1"
-source = "git+https://github.com/mmlado/lez-admin-authority?tag=v0.1.0-alpha.1#41bb41b5c594362e8ee30b584dd9134b2f258ccc"
+version = "0.1.0"
+source = "git+https://github.com/mmlado/lez-admin-authority?tag=v0.1.0#bbc35374cdf5a3f2d1fef8436ce768bf88109abe"
 dependencies = [
- "borsh",
- "lee_core",
+ "lez-admin-authority-macros",
  "lez-authority",
 ]
 
 [[package]]
+name = "lez-admin-authority-macros"
+version = "0.1.0"
+source = "git+https://github.com/mmlado/lez-admin-authority?tag=v0.1.0#bbc35374cdf5a3f2d1fef8436ce768bf88109abe"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "lez-authority"
-version = "0.1.0-alpha.1"
-source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0-alpha.1#0f956f91a6fdbdf36ad25c7b89e147d7cb61cba0"
+version = "0.1.0"
+source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0#27e9fc48aeaba44c656ac04b7b87d1e98665ee19"
 dependencies = [
  "borsh",
  "lee_core",
+ "lez-authority-macros",
+]
+
+[[package]]
+name = "lez-authority-macros"
+version = "0.1.0"
+source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0#27e9fc48aeaba44c656ac04b7b87d1e98665ee19"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
