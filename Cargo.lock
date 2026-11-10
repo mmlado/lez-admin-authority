@@ -3714,7 +3714,7 @@ dependencies = [
 
 [[package]]
 name = "lez-admin-authority"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "lez-admin-authority-macros",
  "lez-authority",
@@ -3722,7 +3722,7 @@ dependencies = [
 
 [[package]]
 name = "lez-admin-authority-macros"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -3732,8 +3732,8 @@ dependencies = [
 
 [[package]]
 name = "lez-authority"
-version = "0.1.0-alpha.1"
-source = "git+https://github.com/mmlado/lez-authority?rev=7361e00f53bdf6707f57eee68fc846d4d3e215c3#7361e00f53bdf6707f57eee68fc846d4d3e215c3"
+version = "0.1.0"
+source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0#27e9fc48aeaba44c656ac04b7b87d1e98665ee19"
 dependencies = [
  "borsh",
  "lee_core",
@@ -3742,8 +3742,8 @@ dependencies = [
 
 [[package]]
 name = "lez-authority-macros"
-version = "0.1.0-alpha.1"
-source = "git+https://github.com/mmlado/lez-authority?rev=7361e00f53bdf6707f57eee68fc846d4d3e215c3#7361e00f53bdf6707f57eee68fc846d4d3e215c3"
+version = "0.1.0"
+source = "git+https://github.com/mmlado/lez-authority?tag=v0.1.0#27e9fc48aeaba44c656ac04b7b87d1e98665ee19"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -4192,9 +4192,9 @@ dependencies = [
 
 [[package]]
 name = "libz-sys"
-version = "1.1.30"
+version = "1.1.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f710a23e6dbf193214fd46ca56a9d6864e550abe86202184532ae7275e46de19"
+checksum = "fee3f59f4321dab0c78d828942e7aa09d0bd8ad6e78a501977e6bf3d02938045"
 dependencies = [
  "cc",
  "pkg-config",
@@ -7060,7 +7060,7 @@ dependencies = [
 
 [[package]]
 name = "sample"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "borsh",
  "lee_core",
@@ -7070,7 +7070,7 @@ dependencies = [
 
 [[package]]
 name = "sample-minimal"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "borsh",
  "lee_core",
@@ -7079,7 +7079,7 @@ dependencies = [
 
 [[package]]
 name = "sample-runner"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "borsh",
@@ -7094,7 +7094,7 @@ dependencies = [
 
 [[package]]
 name = "sample_core"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "borsh",
  "lee_core",
