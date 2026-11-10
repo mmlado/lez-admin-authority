@@ -10,7 +10,7 @@
 
 Single-admin authority for LEZ actor programs (LEZ 0.4): one admin per program, installed by the deployer, handed over by nominate and accept, renounceable, and checked before the handler for every message marked `#[only(Admin)]`, the way `onlyOwner` marks a Solidity function. The program stays a plain LEZ program. A pure Rust library with no SPEL dependency, built on [lez-authority](https://github.com/mmlado/lez-authority), which owns the guard, the routing and the slot. The admin is one role of lez-authority's role sets, so a second role, such as a freeze authority, can join it later without changing it. A SPEL shim (level 3) is planned.
 
-Status: alpha, `v0.1.0-alpha.1`. The API and the wire formats may still change before 0.1.0. Pinned to logos-execution-zone `dev` at 7e3f7f7 (2026-10-24) and lez-authority `v0.1.0-alpha.1`. The v0.2.4 line lives in [spel-admin-authority](https://github.com/mmlado/spel-admin-authority) and stays as it is. Coming from it: [docs/migration-from-v0.2.md](docs/migration-from-v0.2.md).
+Status: `v0.1.0`. See [Versioning and stability](#versioning-and-stability) for what a release promises. Pinned to logos-execution-zone `dev` at 7e3f7f7 (2026-10-24) and lez-authority `v0.1.0`. The v0.2.4 line lives in [spel-admin-authority](https://github.com/mmlado/spel-admin-authority) and stays as it is. Coming from it: [docs/migration-from-v0.2.md](docs/migration-from-v0.2.md).
 
 ## What it does
 
@@ -97,7 +97,7 @@ Identity comes from the engine's `from` at every hop, never from a field in the 
 [dependencies]
 borsh = { version = "1", features = ["derive"] }
 lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
-lez-admin-authority = { git = "https://github.com/mmlado/lez-admin-authority", tag = "v0.1.0-alpha.1" }
+lez-admin-authority = { git = "https://github.com/mmlado/lez-admin-authority", tag = "v0.1.0" }
 ```
 
 The `lee_core` source must match the one this repo pins, spelt the same way: cargo treats a tag and a rev as different sources even when they point at the same commit, and two copies of `lee_core` do not compile. `lez-authority` comes in transitively.
@@ -298,7 +298,7 @@ RISC0_DEV_MODE=1 cargo test --manifest-path sample/methods/Cargo.toml --test ove
 
 Semantic versioning covers the public Rust API and the on-chain wire formats: the Borsh encoding of `AuthoritySlot` inside your config, and of the library's messages, `AdminOp` and `Forwarded` behind the byte 255. Your enum's encoding is yours. The refusal codes and their meaning are covered too. While the version is 0.x, a minor bump may change any of them, and each such change is called out in the [changelog](CHANGELOG.md).
 
-The `lee_core` dependency pins logos-execution-zone `dev` at commit `7e3f7f765371c4110a1f7f37baf520cd253fb339`, and lez-authority at its `v0.1.0-alpha.1` tag. Every re-pin is a minor release.
+The `lee_core` dependency pins logos-execution-zone `dev` at commit `7e3f7f765371c4110a1f7f37baf520cd253fb339`, and lez-authority at its `v0.1.0` tag. Every re-pin is a minor release.
 
 ## License
 
