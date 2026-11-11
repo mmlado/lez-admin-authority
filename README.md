@@ -264,7 +264,6 @@ About 10,000 cycles is the floor of any execution of this guest, the admin check
 - A check inside a handler arm, or one that depends on the message's data or the program's state. The guard checks each message by its variant, before the handler.
 - `Init` with the program's own settings. `Init` writes `Config::default()` with the admin installed, and the settings follow as admin-only messages.
 - A client crate or CLI: [issue #1](https://github.com/mmlado/lez-admin-authority/issues/1). The runner is the reference client.
-- An admin-only message that runs where it is sent, without the hop to the config: [lez-authority#1](https://github.com/mmlado/lez-authority/issues/1).
 - The level 3 SPEL shim.
 - A freeze role. It comes as a second role of lez-authority, after the admin, composed through traits ([ADR-0003](https://github.com/mmlado/lez-authority/blob/main/docs/adr/0003-roles-compose-through-traits.md)).
 
