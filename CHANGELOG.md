@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-11
+
+### Changed
+
+- `lee_core`, the wallet and the program loader core are pinned to logos-execution-zone `v0.4.0-rc3`, by tag, in place of `dev` at `7e3f7f7`. A consumer pins the same tag, spelt the same way. The admin's rules, the wire formats and the refusal codes are unchanged.
+- lez-authority is pinned at its `v0.2.0` tag.
+- The runner is on the rc3 wallet, whose `WalletCore` is generic over its sequencer client and which runs each call before sending it. A refused step must fail in that simulation with its code, then the runner sends it anyway with `set_allow_revert(true)`, so the runner checks the codes itself. It prints the gas the wallet declared for each step.
+- `sample/RUN.md`, the README's client and gas notes, and `docs/migration-from-v0.2.md` describe the rc3 wallet. The overhead numbers in `docs/overhead.md` are measured again and are the same.
+- rustix 1.1.6 in the lock, for RUSTSEC-2026-0486.
+- The audit policy ignores RUSTSEC-2026-0487, 0489, 0490 and 0491, hickory-proto advisories that come through the LEZ wallet stack and cannot be selected from this workspace.
+
 ## [0.1.0] - 2026-11-10
 
 ### Added
@@ -42,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The overhead harness, `sample/methods/tests/overhead.rs`, and the cycle counts per hop in `docs/overhead.md`.
 - The README with the integration steps, the transaction shapes and the error table, `docs/authority-lifecycle.md`, `docs/requirement-test-matrix.md` and `docs/migration-from-v0.2.md`.
 
-[Unreleased]: https://github.com/mmlado/lez-admin-authority/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mmlado/lez-admin-authority/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mmlado/lez-admin-authority/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mmlado/lez-admin-authority/releases/tag/v0.1.0
 [0.1.0-alpha.1]: https://github.com/mmlado/lez-admin-authority/releases/tag/v0.1.0-alpha.1

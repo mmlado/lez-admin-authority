@@ -1,6 +1,6 @@
 # Requirement-to-test matrix, RFP-001 on LEZ 0.4
 
-Every hard requirement of [RFP-001](https://github.com/logos-co/rfp/blob/main/RFP-001-admin-authority-lib.md) and every scenario of the proposal, with what satisfies it in this repo and in [lez-authority](https://github.com/mmlado/lez-authority). Test names are exact. `sample` names a test in [`sample/src/main.rs`](../sample/src/main.rs), `minimal` one in [`sample-minimal/src/main.rs`](../sample-minimal/src/main.rs), `engine` one in lez-authority's `src/tests.rs`, the macro tests in its `tests/macros.rs`, and `runner` a step of [`sample/runner`](../sample/runner/src/main.rs) as run on a local dev sequencer at LEZ `7e3f7f7` on 2026-10-26. Regenerate the coverage claim with `cargo test --workspace --exclude sample-runner --locked` here and `cargo test --workspace --locked` in lez-authority.
+Every hard requirement of [RFP-001](https://github.com/logos-co/rfp/blob/main/RFP-001-admin-authority-lib.md) and every scenario of the proposal, with what satisfies it in this repo and in [lez-authority](https://github.com/mmlado/lez-authority). Test names are exact. `sample` names a test in [`sample/src/main.rs`](../sample/src/main.rs), `minimal` one in [`sample-minimal/src/main.rs`](../sample-minimal/src/main.rs), `engine` one in lez-authority's `src/tests.rs`, the macro tests in its `tests/macros.rs`, and `runner` a step of [`sample/runner`](../sample/runner/src/main.rs) as run on a local dev sequencer at LEZ `v0.4.0-rc3` on 2026-11-11. Regenerate the coverage claim with `cargo test --workspace --exclude sample-runner --locked` here and `cargo test --workspace --locked` in lez-authority.
 
 ## Hard requirements, Functionality
 
@@ -47,11 +47,11 @@ Every hard requirement of [RFP-001](https://github.com/logos-co/rfp/blob/main/RF
 | Initialization | sample `init_through_the_seat_installs_the_sender_as_admin`, runner `init` |
 | Re-initialization rejection | sample `a_replayed_init_is_refused_too`, `init_after_renounce_is_refused`, engine `install_refuses_a_held_slot` |
 | Admin gated-call success | sample `the_admin_sets_the_admin_value`, minimal `the_deployer_initializes_anyone_sets_the_open_value_only_the_admin_the_other`, runner `admin setter` |
-| Non-admin gated-call rejection | sample `a_signed_stranger_cannot_set_the_admin_value`, runner `stranger`, with `lez-authority/admin E103: the signing account is not the admin` in the sequencer log |
+| Non-admin gated-call rejection | sample `a_signed_stranger_cannot_set_the_admin_value`, runner `stranger`, with `lez-authority/admin E103: the signing account is not the admin` in the wallet's simulation and in the sequencer log |
 | Transfer success | sample `the_nominee_accepts_and_the_old_admin_is_out`, runner `accept` |
 | Non-admin transfer rejection | sample `a_stranger_cannot_nominate`, `only_the_nominee_accepts`, engine `only_the_holder_nominates`, runner `nominee before accept` |
 | Renounce success | sample `renounce_empties_the_slot_and_keeps_the_values`, runner `renounce` |
-| Protected instructions rejected after renounce | sample `a_renounced_admin_refuses_every_change`, runner `after renounce`, with `E102: the admin is renounced` in the log |
+| Protected instructions rejected after renounce | sample `a_renounced_admin_refuses_every_change`, runner `after renounce`, with `E102: the admin is renounced` in the simulation and in the log |
 
 ## The 0.4 routing surface
 
@@ -63,7 +63,7 @@ Behaviour with no v0.2 counterpart, because LEZ 0.4 routes messages between acto
 | The config accepts a forward only from an actor of the program, and only at the config | sample `a_forged_forward_sent_straight_to_the_config_is_refused`, `a_forward_sent_to_a_seat_is_refused` |
 | Only a seat builds a hop: the guard refuses a handler's response that sends the config a library message, wherever the handler runs | engine `a_handler_cannot_forge_a_hop`, `a_handler_cannot_forge_a_hop_through_an_async_message`, `a_handler_at_the_config_cannot_send_it_a_library_message` |
 | A message that needs the admin cannot skip the seat | sample `init_sent_straight_to_the_config_is_refused`, `an_admin_message_sent_straight_to_the_config_is_refused`, engine `require_refuses_a_message_that_skipped_the_seat`, `an_operation_sent_straight_to_the_config_is_refused` |
-| The init gate: the deployer, or the genesis key, at top level | sample `init_by_another_account_is_refused`, `init_by_the_deployer_through_a_program_is_refused`, `with_a_genesis_key_the_deployer_is_refused`, engine `another_account_cannot_install`, `the_deployer_reached_through_a_program_cannot_install`, runner `stranger init` with `E117` in the log |
+| The init gate: the deployer, or the genesis key, at top level | sample `init_by_another_account_is_refused`, `init_by_the_deployer_through_a_program_is_refused`, `with_a_genesis_key_the_deployer_is_refused`, engine `another_account_cannot_install`, `the_deployer_reached_through_a_program_cannot_install`, runner `stranger init` with `E117` in the simulation and in the log |
 | An empty config accepts only `Init` | sample `before_init_even_an_open_message_is_refused`, `before_init_the_admin_value_is_locked`, engine `only_the_first_role_creates_the_config` |
 | Open messages need no seat, and run where they are sent | sample `anyone_sets_the_open_value`, `an_open_message_sent_to_a_seat_runs_there`, engine `an_open_message_runs_where_it_is_sent`, runner `open setter` |
 | The admin's `via` is part of the admin | sample `a_pda_admin_acts_through_its_program`, `a_pda_admin_cannot_act_at_top_level`, `a_change_entered_from_another_program_is_refused`, engine `a_pda_holder_acts_through_its_program_only` |
@@ -76,7 +76,7 @@ Behaviour with no v0.2 counterpart, because LEZ 0.4 routes messages between acto
 
 ## Live runs
 
-The runner's fourteen steps on a local dev sequencer, LEZ `dev` at `7e3f7f7`, `RISC0_DEV_MODE=1`, last run 2026-10-29 against the sample as a plain LEZ program: deploy, a stranger's `Init` refused, `Init`, the open setter, the admin setter, the target setter through the config, a stranger refused, nominate, the nominee refused before accepting, accept, the new admin's setter, the old admin refused, renounce, a call after renounce refused. Every read-back matched, and the five refusals appeared in the sequencer log with their codes: E117 once, E103 three times, E102 once.
+The runner's fourteen steps on a local dev sequencer, LEZ `v0.4.0-rc3`, `RISC0_DEV_MODE=1`, last run 2026-11-11: deploy, a stranger's `Init` refused, `Init`, the open setter, the admin setter, the target setter through the config, a stranger refused, nominate, the nominee refused before accepting, accept, the new admin's setter, the old admin refused, renounce, a call after renounce refused. Every read-back matched. The runner found each refusal's code in the wallet's simulation, then sent the call anyway, and the five refusals appeared in the sequencer log with their codes at the blocks that included them: E117 once, E103 three times, E102 once.
 
 Not yet run live: a PDA admin, which needs a second program. Covered on host in both repos.
 

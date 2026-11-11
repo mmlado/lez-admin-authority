@@ -10,7 +10,7 @@
 
 Single-admin authority for LEZ actor programs (LEZ 0.4): one admin per program, installed by the deployer, handed over by nominate and accept, renounceable, and checked before the handler for every message marked `#[only(Admin)]`, the way `onlyOwner` marks a Solidity function. The program stays a plain LEZ program. A pure Rust library with no SPEL dependency, built on [lez-authority](https://github.com/mmlado/lez-authority), which owns the guard, the routing and the slot. The admin is one role of lez-authority's role sets, so a second role, such as a freeze authority, can join it later without changing it. A SPEL shim (level 3) is planned.
 
-Status: `v0.1.0`. See [Versioning and stability](#versioning-and-stability) for what a release promises. Pinned to logos-execution-zone `dev` at 7e3f7f7 (2026-10-24) and lez-authority `v0.1.0`. The v0.2.4 line lives in [spel-admin-authority](https://github.com/mmlado/spel-admin-authority) and stays as it is. Coming from it: [docs/migration-from-v0.2.md](docs/migration-from-v0.2.md).
+Status: `v0.2.0`. See [Versioning and stability](#versioning-and-stability) for what a release promises. Pinned to logos-execution-zone `v0.4.0-rc3` (2026-11-11) and lez-authority `v0.2.0`. The v0.2.4 line lives in [spel-admin-authority](https://github.com/mmlado/spel-admin-authority) and stays as it is. Coming from it: [docs/migration-from-v0.2.md](docs/migration-from-v0.2.md).
 
 ## What it does
 
@@ -96,8 +96,8 @@ Identity comes from the engine's `from` at every hop, never from a field in the 
 ```toml
 [dependencies]
 borsh = { version = "1", features = ["derive"] }
-lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", rev = "7e3f7f765371c4110a1f7f37baf520cd253fb339" }
-lez-admin-authority = { git = "https://github.com/mmlado/lez-admin-authority", tag = "v0.1.0" }
+lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone", tag = "v0.4.0-rc3" }
+lez-admin-authority = { git = "https://github.com/mmlado/lez-admin-authority", tag = "v0.2.0" }
 ```
 
 The `lee_core` source must match the one this repo pins, spelt the same way: cargo treats a tag and a rev as different sources even when they point at the same commit, and two copies of `lee_core` do not compile. `lez-authority` comes in transitively.
@@ -131,7 +131,7 @@ There is no IDL and no CLI for 0.4 yet. A client builds a transaction with the L
 
 In wallet terms a seat is `AccountIdentity::Public(account).select_program_actor_state(program)`, the config is `AccountIdentity::PublicPda { program, seed }` on the same program without authorization, and a target the wallet holds the key for is `PublicNoSign`. The wallet supplies the config account's PDA evidence from the mention. A client crate that builds these for any program is [issue #1](https://github.com/mmlado/lez-admin-authority/issues/1).
 
-A refused transaction is still included and charged, and the client learns nothing from it: read the config back with `get_account_view` on the config actor and decode your `Config`. The refusal text is in the sequencer log. [`sample/RUN.md`](sample/RUN.md) walks through a run on a local dev sequencer.
+The wallet runs each transaction before it sends it. A transaction the guard refuses is not sent: the wallet returns `SimulatedRevert` with the refusal text, such as `lez-authority/admin E103: the signing account is not the admin`. With `set_allow_revert(true)` the wallet sends it anyway, and it is included, reverted, and charged its whole gas limit, with the text in the sequencer log. Read the config back with `get_account_view` on the config actor and decode your `Config`. The runner checks each refused step both ways. [`sample/RUN.md`](sample/RUN.md) walks through a run on a local dev sequencer.
 
 ## Testing the reject
 
@@ -204,7 +204,7 @@ A program whose admin writes to accounts other than the config sends to them fro
 
 ## Errors
 
-A refusal is a panic with a stable code: `lez-authority/admin E103: the signing account is not the admin`. The text reaches the sequencer log verbatim, the transaction is included and reverted, and the client reads the state back. Codes are append-only. The full table, with each refusal's trigger, is in [lez-authority](https://github.com/mmlado/lez-authority#refusals).
+A refusal is a panic with a stable code: `lez-authority/admin E103: the signing account is not the admin`. The wallet returns the text in `SimulatedRevert` before sending, and a transaction sent anyway is included and reverted, with the text in the sequencer log verbatim. Codes are append-only. The full table, with each refusal's trigger, is in [lez-authority](https://github.com/mmlado/lez-authority#refusals).
 
 | Code | Text |
 | --- | --- |
@@ -241,7 +241,7 @@ Measured from the sample's guest under the risc0 executor, per guest execution. 
 | nominate | 2 | 26,031 |
 | target setter | 3 | 37,931 |
 
-About 10,000 cycles is the floor of any execution of this guest, the admin check costs about 2,700 over an open write, and each hop is one execution. At the config the guard decodes the config before the handler and decodes what the handler wrote after it, on top of the handler's own decode. Those reads grow with the config's size, so keep large data on other actors of the program, not in the config. The wallet's default `gas_limit` is 2,000,000 cycles, so the most expensive operation here uses about 2 percent of it. In transaction size, a gated message adds the sender's seat to the actor list, a pair of 32-byte ids, and the sender's signature. The program's messages keep their encoding.
+About 10,000 cycles is the floor of any execution of this guest, the admin check costs about 2,700 over an open write, and each hop is one execution. At the config the guard decodes the config before the handler and decodes what the handler wrote after it, on top of the handler's own decode. Those reads grow with the config's size, so keep large data on other actors of the program, not in the config. The wallet runs each call before sending it and declares the cycles it measured plus 25 percent: on the live run of 2026-11-11 the admin setter declared 36,777 and the target setter 48,340, under 2.5 percent of the 2,000,000 budget. A call that reverts pays the whole budget. In transaction size, a gated message adds the sender's seat to the actor list, a pair of 32-byte ids, and the sender's signature. The program's messages keep their encoding.
 
 ## Security notes
 
@@ -286,7 +286,7 @@ cargo test --workspace --exclude sample-runner --locked
 cargo check --locked --manifest-path ci/consumer-fixture/guest/Cargo.toml
 ```
 
-The runner links the LEZ wallet stack, which needs `libpcsclite-dev` and is slow, so CI builds it weekly. The guest and the overhead numbers need the risc0 toolchain:
+The runner links the LEZ wallet stack, which needs `libpcsclite-dev` and is slow, so CI builds it weekly. It needs `r0vm` on its `PATH` when it runs, because the wallet runs each call through it before sending. The guest and the overhead numbers need the risc0 toolchain:
 
 ```bash
 cargo build --release --manifest-path sample/methods/Cargo.toml
@@ -297,7 +297,7 @@ RISC0_DEV_MODE=1 cargo test --manifest-path sample/methods/Cargo.toml --test ove
 
 Semantic versioning covers the public Rust API and the on-chain wire formats: the Borsh encoding of `AuthoritySlot` inside your config, and of the library's messages, `AdminOp` and `Forwarded` behind the byte 255. Your enum's encoding is yours. The refusal codes and their meaning are covered too. While the version is 0.x, a minor bump may change any of them, and each such change is called out in the [changelog](CHANGELOG.md).
 
-The `lee_core` dependency pins logos-execution-zone `dev` at commit `7e3f7f765371c4110a1f7f37baf520cd253fb339`, and lez-authority at its `v0.1.0` tag. Every re-pin is a minor release.
+The `lee_core` dependency pins logos-execution-zone at its `v0.4.0-rc3` tag, and lez-authority at its `v0.2.0` tag. Every re-pin is a minor release.
 
 ## License
 

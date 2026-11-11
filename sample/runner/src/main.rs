@@ -1,7 +1,4 @@
-//! Drives the sample on a local dev sequencer: deploy, `Init` through the deployer's seat, the
-//! open setter, the admin setter, a stranger's call that must be refused, then the handover,
-//! nominate and accept, with the old admin refused afterwards, and renounce. The config is read
-//! back after each step. The wallet comes from the environment, as LEZ's own example runners do.
+//! Drives the sample on a local dev sequencer and reads the config back after each step.
 //!
 //! Usage: sample-runner <sample.bin> <payer account id>
 
@@ -10,7 +7,8 @@ use lee_core::account::{AccountId, Actor};
 use lez_admin_authority::{AdminOp, AuthoritySlot, Holder, Wire, admin_op};
 use sample_core::{CONFIG_SEED, Config, Message, TargetState, config_account};
 use wallet::{
-    AccountIdentity, AccountMention, WalletCore, program_facades::program_loader::ProgramLoader,
+    AccountIdentity, AccountMention, DeclaredFee, ExecutionFailureKind, WalletCore,
+    WalletSequencerClient, program_facades::program_loader::ProgramLoader,
 };
 
 #[tokio::main]
@@ -25,7 +23,7 @@ async fn main() -> Result<()> {
         .map_err(|error| anyhow!("payer account id: {error:?}"))?;
     let mut wallet = WalletCore::from_env()?;
 
-    // Deploy. The header account is the program's id, and its key is the deployer's.
+    // The header account is the program's id, and its key is the deployer's.
     let bytecode = std::fs::read(&bin).with_context(|| format!("reading {bin}"))?;
     let user_elf_len = risc0_binfmt::ProgramBinary::decode(&bytecode)
         .map_err(|error| anyhow!("not a program binary: {error:?}"))?
@@ -43,7 +41,10 @@ async fn main() -> Result<()> {
     let program = ProgramLoader(&wallet)
         .deploy(deployer, &segments, bytecode, true, Some(payer))
         .await?;
-    println!("program  {program:?}");
+    println!(
+        "program  {program:?}, header declared gas {}",
+        declared_gas(&wallet)
+    );
     println!("deployer {deployer:?}");
     println!("config   {:?}", config_account(program));
     println!("stranger {stranger:?}");
@@ -59,17 +60,16 @@ async fn main() -> Result<()> {
     };
     let seat =
         |account: AccountId| AccountIdentity::Public(account).select_program_actor_state(program);
-    // A target: the program's actor on an account that does not sign.
     let target = |account: AccountId| {
         AccountIdentity::PublicNoSign(account).select_program_actor_state(program)
     };
 
-    // A stranger's Init first: the gate refuses it, the config account stays empty.
-    call(
-        &wallet,
+    refused(
+        &mut wallet,
         payer,
         vec![seat(stranger), config()],
         &admin_op(AdminOp::Init),
+        "E117",
         "stranger init",
     )
     .await?;
@@ -81,8 +81,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    // Through the deployer's seat: the seat and the config, the deployer signs. The deployer
-    // is the program's own account, so the gate lets it through.
+    // The deployer is the program's own account, so the gate lets it through.
     call(
         &wallet,
         payer,
@@ -101,7 +100,7 @@ async fn main() -> Result<()> {
     };
     check(&wallet, program, Some(&expected), "after init").await?;
 
-    // Straight to the config: anyone, the payer signs for the fee only.
+    // No seat: the payer signs only for the fee.
     call(
         &wallet,
         payer,
@@ -130,8 +129,7 @@ async fn main() -> Result<()> {
     };
     check(&wallet, program, Some(&expected), "after the admin setter").await?;
 
-    // The admin sets a value on the stranger's account through the hub: three hops, so the
-    // target is in the actor list too.
+    // Three hops, so the target is in the actor list too.
     let set_target = Message::SetTargetValue {
         target: stranger,
         value: 5,
@@ -160,13 +158,12 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    // A stranger through its own seat. The transaction is included and reverted, so the config
-    // must read back unchanged. The refusal text is only in the sequencer's log.
-    call(
-        &wallet,
+    refused(
+        &mut wallet,
         payer,
         vec![seat(stranger), config()],
         &Message::SetAdminValue(1).into(),
+        "E103",
         "stranger",
     )
     .await?;
@@ -178,7 +175,6 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    // Handover: the admin nominates, nothing moves, the nominee accepts through its own seat.
     let nominate = admin_op(AdminOp::Nominate { next: nominee });
     call(
         &wallet,
@@ -200,11 +196,12 @@ async fn main() -> Result<()> {
     };
     check(&wallet, program, Some(&expected), "after nominate").await?;
 
-    call(
-        &wallet,
+    refused(
+        &mut wallet,
         payer,
         vec![seat(nominee), config()],
         &Message::SetAdminValue(1).into(),
+        "E103",
         "nominee before accept",
     )
     .await?;
@@ -254,11 +251,12 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    call(
-        &wallet,
+    refused(
+        &mut wallet,
         payer,
         vec![seat(deployer), config()],
         &Message::SetAdminValue(2).into(),
+        "E103",
         "old admin",
     )
     .await?;
@@ -284,11 +282,12 @@ async fn main() -> Result<()> {
     };
     check(&wallet, program, Some(&expected), "after renounce").await?;
 
-    call(
-        &wallet,
+    refused(
+        &mut wallet,
         payer,
         vec![seat(nominee), config()],
         &Message::SetAdminValue(3).into(),
+        "E102",
         "after renounce",
     )
     .await?;
@@ -301,14 +300,14 @@ async fn main() -> Result<()> {
     .await?;
 
     println!(
-        "all steps behaved. The refused calls are: stranger init, stranger, nominee before accept, old admin, after renounce. Their text is in the sequencer log."
+        "all steps behaved. Each refused call carried its code in the wallet's simulation, then was included and reverted on chain, with the same code in the sequencer log."
     );
     Ok(())
 }
 
 /// Sends one root call over `accounts`, paid by `payer`, and waits for inclusion.
-async fn call(
-    wallet: &WalletCore,
+async fn call<C: WalletSequencerClient>(
+    wallet: &WalletCore<C>,
     payer: AccountId,
     accounts: Vec<AccountMention>,
     message: &Wire<Message>,
@@ -320,13 +319,56 @@ async fn call(
         .await
         .map_err(|error| anyhow!("{what}: {error:?}"))?;
     let (_tx, block) = wallet.poll_transaction(hash).await?;
-    println!("{what}: included in block {block:?}");
+    println!(
+        "{what}: included in block {block:?}, declared gas {}",
+        declared_gas(wallet)
+    );
     Ok(())
 }
 
+/// Sends a call the guard must refuse with `code`: the wallet's simulation has to report the
+/// code, then the call goes on chain and is reverted there.
+async fn refused<C: WalletSequencerClient>(
+    wallet: &mut WalletCore<C>,
+    payer: AccountId,
+    accounts: Vec<AccountMention>,
+    message: &Wire<Message>,
+    code: &str,
+    what: &str,
+) -> Result<()> {
+    let needle = format!("lez-authority/admin {code}:");
+    let bytes = borsh::to_vec(message)?;
+    match wallet
+        .send_pub_tx_paid_by(accounts.clone(), 0, bytes, Some(payer))
+        .await
+    {
+        Err(ExecutionFailureKind::SimulatedRevert(reason)) if reason.contains(&needle) => {
+            println!("{what}: refused in simulation with {code}");
+        }
+        other => {
+            return Err(anyhow!(
+                "{what}: expected a simulated {code} refusal, got {other:?}"
+            ));
+        }
+    }
+    // Sent anyway, so the sequencer refuses it as well, not only the wallet.
+    wallet.set_allow_revert(true);
+    let sent = call(wallet, payer, accounts, message, what).await;
+    wallet.set_allow_revert(false);
+    sent
+}
+
+/// The gas the wallet measured and declared for its last send.
+fn declared_gas<C: WalletSequencerClient>(wallet: &WalletCore<C>) -> String {
+    match wallet.take_declared_fee() {
+        Some(DeclaredFee::Public(fee)) => format!("{:?}", fee.gas_limit),
+        _ => "none".to_owned(),
+    }
+}
+
 /// Reads a target's state back and compares it with what the step should have left.
-async fn check_target(
-    wallet: &WalletCore,
+async fn check_target<C: WalletSequencerClient>(
+    wallet: &WalletCore<C>,
     program: AccountId,
     target: AccountId,
     expected: Option<&TargetState>,
@@ -352,8 +394,8 @@ async fn check_target(
 }
 
 /// Reads the config back and compares it with what the step should have left.
-async fn check(
-    wallet: &WalletCore,
+async fn check<C: WalletSequencerClient>(
+    wallet: &WalletCore<C>,
     program: AccountId,
     expected: Option<&Config>,
     when: &str,

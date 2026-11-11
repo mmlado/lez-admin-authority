@@ -1,17 +1,17 @@
 # Running the sample on a local dev sequencer
 
-What this run proves: the header key signs after deployment, so the deployer gate is possible; the wallet supplies the config PDA's evidence from a `PublicPda` mention; the default fee covers a two-hop call; and whether a refusal's text reaches the sequencer log.
+What this run proves on a real sequencer: the deployer gate, the admin check, the three hops to a target, the handover and renounce, and that each refused call carries its code both in the wallet's simulation and on chain.
 
 ## 1. Sequencer
 
-In a LEZ checkout at `7e3f7f765371c4110a1f7f37baf520cd253fb339` (branch `dev`), inside `nix develop`:
+In a LEZ checkout at tag `v0.4.0-rc3`, inside `nix develop`:
 
 ```sh
 just clean
 RISC0_DEV_MODE=1 just run-sequencer-standalone     # 127.0.0.1:3040, no proving
 ```
 
-Leave it running. Refusal text appears only in this terminal.
+Leave it running. A refused transaction's text appears in this terminal.
 
 ## 2. Wallet
 
@@ -34,24 +34,28 @@ ls sample/methods/target/riscv-guest/sample-methods/sample/riscv32im-risc0-zkvm-
 
 ## 4. Run
 
+With the same `LEE_WALLET_HOME_DIR`, and `r0vm` on the `PATH`: the wallet runs each call through it before sending.
+
 ```sh
 cargo run --release -p sample-runner -- \
   sample/methods/target/riscv-guest/sample-methods/sample/riscv32im-risc0-zkvm-elf/release/sample.bin \
   <PAYER>
 ```
 
-The runner prints the program, deployer, config and stranger account ids, one `included in block` line per step, and the config read back after each step. It stops at the first step whose read-back differs from what the step should have left.
+The runner prints the program, deployer, config, stranger and nominee account ids, one `included in block` line per step with the gas the wallet declared, and the config read back after each step. A step the guard must refuse first prints `refused in simulation with E<code>`, then goes on chain anyway. The runner stops at the first step that does not behave.
 
 ## 5. What to look for
 
-- Four `included in block` lines after the deployment's own.
+- The deployment: one transaction per segment, then the header.
+- Five refused steps: `stranger init` with E117, `stranger`, `nominee before accept` and `old admin` with E103, `after renounce` with E102. Each declares the whole 2,000,000 gas budget, and its read-back is unchanged.
 - `after init`: the admin slot held by the deployer, both values 0.
-- `after the stranger, must be unchanged`: `admin_value` still 9.
-- In the sequencer terminal, the stranger's transaction with the text `the signing account is not the admin`. If the text is not there, note what is: that answers whether refusal text survives.
+- `the target's state`: `TargetState { value: 5 }` on the stranger's account.
+- In the sequencer terminal, each refused transaction's text with its code. The guest's panic line also prints in the runner's terminal, once per simulation.
 
 ## If something fails
 
-- `SegmentCountMismatch`: the runner counts segments from the user ELF inside the program binary. Report the numbers.
+- `SegmentChain(CountMismatch { .. })`: the runner counts segments from the user ELF inside the program binary. Report the numbers.
 - `UnadmittedPublicActor`: the wallet did not attach the config PDA's evidence. Report it, that is a finding about `PublicPda` mentions.
-- `MissingFeeDeclaration` or a fee error: the wallet's default `gas_limit` is 2,000,000. Report it.
-- An `init` read-back of `None`: the call reverted. The sequencer log has the reason.
+- `SimulatedRevert` on a step that should pass: the error carries the refusal text. Report it.
+- `Transaction not found in preconfigured amount of blocks`: the sequencer dropped the transaction, which is its fee screening or an invalid input, not a revert. Check the payer's balance.
+- A panic in the runner about `r0vm`: put it on the `PATH`.

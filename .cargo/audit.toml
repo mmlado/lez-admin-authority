@@ -9,6 +9,10 @@ ignore = [
     "RUSTSEC-2023-0071", # rsa Marvin timing side channel, via the LEZ wallet stack
     "RUSTSEC-2026-0118", # hickory-proto NSEC3 unbounded loop, via the LEZ wallet stack
     "RUSTSEC-2026-0119", # hickory-proto name compression CPU exhaustion, via the LEZ wallet stack
+    "RUSTSEC-2026-0487", # hickory-proto SVCB alpn parse panic, via the LEZ wallet stack
+    "RUSTSEC-2026-0489", # hickory-proto SVCB quote parse panic, via the LEZ wallet stack
+    "RUSTSEC-2026-0490", # hickory-proto zone lexer long-token panic, via the LEZ wallet stack
+    "RUSTSEC-2026-0491", # hickory-proto header record-count memory amplification, via the LEZ wallet stack
     "RUSTSEC-2026-0387", # crypto-bigint timing variability, via the LEZ wallet stack
     "RUSTSEC-2025-0141", # bincode 1 unmaintained, via the LEZ wallet stack
     "RUSTSEC-2024-0449", # unsafe-libyaml unmaintained, via the LEZ wallet stack
