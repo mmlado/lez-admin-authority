@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "lez-admin-authority"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lez-admin-authority-macros",
  "lez-authority",
@@ -3725,7 +3725,7 @@ dependencies = [
 
 [[package]]
 name = "lez-admin-authority-macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -7110,7 +7110,7 @@ dependencies = [
 
 [[package]]
 name = "sample"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "borsh",
  "lee_core",
@@ -7120,7 +7120,7 @@ dependencies = [
 
 [[package]]
 name = "sample-minimal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "borsh",
  "lee_core",
@@ -7129,7 +7129,7 @@ dependencies = [
 
 [[package]]
 name = "sample-runner"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "borsh",
@@ -7144,7 +7144,7 @@ dependencies = [
 
 [[package]]
 name = "sample_core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "borsh",
  "lee_core",

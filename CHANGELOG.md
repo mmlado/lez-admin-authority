@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-11
+
 ### Changed
 
 - `lee_core`, the wallet and the program loader core are pinned to logos-execution-zone `v0.4.0-rc3`, by tag, in place of `dev` at `7e3f7f7`. A consumer pins the same tag, spelt the same way. The admin's rules, the wire formats and the refusal codes are unchanged.
@@ -51,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The overhead harness, `sample/methods/tests/overhead.rs`, and the cycle counts per hop in `docs/overhead.md`.
 - The README with the integration steps, the transaction shapes and the error table, `docs/authority-lifecycle.md`, `docs/requirement-test-matrix.md` and `docs/migration-from-v0.2.md`.
 
-[Unreleased]: https://github.com/mmlado/lez-admin-authority/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mmlado/lez-admin-authority/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mmlado/lez-admin-authority/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mmlado/lez-admin-authority/releases/tag/v0.1.0
 [0.1.0-alpha.1]: https://github.com/mmlado/lez-admin-authority/releases/tag/v0.1.0-alpha.1
