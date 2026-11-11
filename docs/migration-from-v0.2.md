@@ -11,7 +11,7 @@ For a program on [spel-admin-authority](https://github.com/mmlado/spel-admin-aut
 | Instructions are dispatched by SPEL from the IDL | The program decodes its own message enum, and there is no IDL yet |
 | Programs call each other by chained calls with account lists | Actors send each other sync and async messages, and a PDA's seed travels as a grant on a sync message |
 | Deployment is bytecode only, and the first caller of `admin_initialize` self-elects | The program id is the loader header account, whose key the deployer holds |
-| Errors are `SpelError::Custom` with a code the client sees | A refusal is a panic whose text reaches the sequencer log, and the client reads state back |
+| Errors are `SpelError::Custom` with a code the client sees | A refusal is a panic. The wallet returns its text as `SimulatedRevert` before sending, and a transaction sent anyway is reverted with the text in the sequencer log |
 
 ## Concept map
 
@@ -29,7 +29,7 @@ For a program on [spel-admin-authority](https://github.com/mmlado/spel-admin-aut
 | `admin_nominate`, `admin_accept` | `AdminOp::Nominate { next }`, `AdminOp::Accept { pda_seed }` | the PDA accept carries its seed |
 | `admin_renounce` | `AdminOp::Renounce` | terminal, as before |
 | Five injected instructions in the IDL | Four library messages a client builds with `admin_op` | they start with the byte 255, your enum hosts none of them |
-| `AdminError`, `6000 + code` on the client | `AuthorityError`, `lez-authority/admin E<code>: <text>` in the sequencer log | numbers kept where the meaning is the same |
+| `AdminError`, `6000 + code` on the client | `AuthorityError`, `lez-authority/admin E<code>: <text>` in the wallet's `SimulatedRevert` and in the sequencer log | numbers kept where the meaning is the same |
 | `caller-pda-seeds` on a chained call | `pda_seeds` on the owning program's sync message | the seat sees the grant as authorization |
 | `UnownedSigner`, `wallet auth-transfer init` | no counterpart | fresh keys signed repeatedly on the dev stack |
 | `spel` CLI, `--co-signer`, `--export` | no CLI yet, the LEZ wallet library and the runner | a client crate is issue #1 |
@@ -99,7 +99,7 @@ Numbers up to 116 follow the v0.2 table where a refusal has the same meaning. Th
 5. **Drop SPEL.** `spel-framework`, `admin-authority` and the macros go. The dependencies are `borsh`, `lee_core` at the pinned commit, and `lez-admin-authority`.
 6. **Build the guest** through a methods crate with `risc0_build::embed_methods`, as `sample/methods` does, with the risc0 toolchain at 3.0.5.
 7. **Deploy immutable and send `Init`** from the deployer's seat, as `admin_op(AdminOp::Init)`. Then nominate the admin the program should have, and have it accept.
-8. **Clients.** Replace IDL-driven calls with transactions from the LEZ wallet library: the root actor, the actors reached, the signer, and the message: Borsh for your enum, `admin_op` for the admin's operations. The README's transaction shapes and the runner show each one. Read the config back after each call: a refusal is a reverted, charged transaction with its text in the sequencer log.
+8. **Clients.** Replace IDL-driven calls with transactions from the LEZ wallet library: the root actor, the actors reached, the signer, and the message: Borsh for your enum, `admin_op` for the admin's operations. The README's transaction shapes and the runner show each one. Read the config back after each call. A refused call is not sent by default: the wallet returns `SimulatedRevert` with the refusal text. Sent anyway, it is a reverted, charged transaction with its text in the sequencer log.
 
 ## Not there yet
 
