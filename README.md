@@ -226,7 +226,7 @@ A refusal is a panic with a stable code: `lez-authority/admin E103: the signing 
 | 122 | a message that needs the admin must go through the sender's own actor |
 | 123 | this message comes only from the config account |
 | 126 | a handler must not change the admin slot |
-| 131 | no admin is installed |
+| 131 | there is no admin |
 | 135 | a handler must not send a library message to the config account |
 
 ## Overhead
