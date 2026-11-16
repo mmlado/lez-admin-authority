@@ -57,7 +57,7 @@ That is [`sample-minimal`](sample-minimal/src/main.rs) without its tests, a comp
 - `Gated` derived on the message enum, and `#[only(Admin)]` on each admin-only message,
 - the `admin` attribute on the handler.
 
-The handler, its signature and the entry point are what they would be without the library. `#[only(Admin)]` is what `#[require_admin]` was in v0.2, and `#[slot(Admin)]` is what `#[admin_slot]` was. The admin's operations, `Init`, `Nominate`, `Accept` and `Renounce`, are not in the program's enum: a client sends them with `admin_op`, and the handler never sees them. Without the macros a program writes what they write, as lez-authority's [`examples/owner_by_hand.rs`](https://github.com/mmlado/lez-authority/blob/main/examples/owner_by_hand.rs) shows for a role named `Owner`.
+The handler, its signature and the entry point are what they would be without the library. `#[only(Admin)]` is what `#[require_admin]` was in v0.2, and `#[slot(Admin)]` is what `#[admin_slot]` was. The admin's operations, `Init`, `Nominate`, `Accept` and `Renounce`, are not in the program's enum: a client sends them with `admin_op`, and the handler never sees them. The admin defines no operations of its own, so `AdminOp::Own` is refused (E108). Without the macros a program writes what they write, as lez-authority's [`examples/owner_by_hand.rs`](https://github.com/mmlado/lez-authority/blob/main/examples/owner_by_hand.rs) shows for a role named `Owner`.
 
 ## How a message travels
 
