@@ -1,6 +1,6 @@
 # Running the sample on a local dev sequencer
 
-What this run proves on a real sequencer: the deployer gate, the admin check, the three hops to a target, the handover and renounce, and that each refused call carries its code both in the wallet's simulation and on chain.
+What this run proves on a real sequencer: the deployer gate, the admin check, the three hops to a target, the handover and renounce, and that each refused call is refused with its code in the wallet's simulation, then included on chain without taking effect, with the same code in the sequencer's log.
 
 ## 1. Sequencer
 

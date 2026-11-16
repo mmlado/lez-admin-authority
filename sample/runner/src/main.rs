@@ -300,7 +300,7 @@ async fn main() -> Result<()> {
     .await?;
 
     println!(
-        "all steps behaved. Each refused call carried its code in the wallet's simulation, then was included and reverted on chain, with the same code in the sequencer log."
+        "all steps behaved. Each refused call carried its code in the wallet's simulation, then was included on chain and changed nothing."
     );
     Ok(())
 }
