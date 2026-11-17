@@ -20,7 +20,7 @@ In a second terminal, same checkout, same `nix develop`:
 ```sh
 export LEE_WALLET_HOME_DIR=$PWD/lez/wallet/configs/debug
 just run-wallet check-health                 # sets the wallet password after `just clean`
-just wallet-import-test-accounts             # two genesis-funded accounts, take the first as PAYER
+just wallet-import-test-accounts             # two genesis-funded accounts, take the first as PAYER, without its Public/ prefix
 ```
 
 ## 3. Guest binary
@@ -42,7 +42,7 @@ cargo run --release -p sample-runner -- \
   <PAYER>
 ```
 
-The runner prints the program, deployer, config, stranger and nominee account ids, one `included in block` line per step with the gas the wallet declared, and the config read back after each step. A step the guard must refuse first prints `refused in simulation with E<code>`, then goes on chain anyway. The runner stops at the first step that does not behave.
+The runner prints the program, deployer, config, stranger and nominee account ids, one `included in block` line per step with the gas the wallet declared, and the config read back after each step. A step the guard must refuse first prints `refused in simulation with E<code>`, then is sent anyway with reverts allowed: the wallet simulates it a second time, and the runner prints its `included in block` line. The runner stops at the first step that does not behave.
 
 ## 5. What to look for
 
@@ -50,10 +50,11 @@ The runner prints the program, deployer, config, stranger and nominee account id
 - Five refused steps: `stranger init` with E117, `stranger`, `nominee before accept` and `old admin` with E103, `after renounce` with E102. Each declares the whole 2,000,000 gas budget, and its read-back is unchanged.
 - `after init`: the admin slot held by the deployer, both values 0.
 - `the target's state`: `TargetState { value: 5 }` on the stranger's account.
-- In the sequencer terminal, each refused transaction's text with its code. The guest's panic line also prints in the runner's terminal, once per simulation.
+- In the sequencer terminal, each refused transaction's text with its code. The guest's panic line also prints in the runner's terminal twice per refused step, once for each simulation.
 
 ## If something fails
 
+- `payer account id: InvalidBase58(..)`: pass the payer's id without the wallet's `Public/` prefix.
 - `SegmentChain(CountMismatch { .. })`: the runner counts segments from the user ELF inside the program binary. Report the numbers.
 - `UnadmittedPublicActor`: the wallet did not attach the config PDA's evidence. Report it, that is a finding about `PublicPda` mentions.
 - `SimulatedRevert` on a step that should pass: the error carries the refusal text. Report it.
