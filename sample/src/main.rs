@@ -528,6 +528,13 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "lez-authority/admin E108: the message does not decode")]
+    fn an_operation_the_admin_does_not_define_is_refused() {
+        let own = admin_op(AdminOp::Own(vec![0]));
+        let _transition = through_seat(DEPLOYER, None, true, bytes(&initialized()), own);
+    }
+
+    #[test]
     fn the_nominee_accepts_and_the_old_admin_is_out() {
         let accept = admin_op(AdminOp::Accept { pda_seed: None });
         let transition = through_seat(STRANGER, None, true, bytes(&nominated()), accept);

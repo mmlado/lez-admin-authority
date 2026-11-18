@@ -115,14 +115,26 @@ mod tests {
             borsh::to_vec(&initialized()).unwrap(),
             Message::SetOpenValue(7).into(),
         );
-        assert_eq!(written(&open).open_value, 7);
+        assert_eq!(
+            written(&open),
+            Config {
+                open_value: 7,
+                ..initialized()
+            }
+        );
 
         let admin = through_seat(
             DEPLOYER,
             borsh::to_vec(&initialized()).unwrap(),
             Message::SetAdminValue(9).into(),
         );
-        assert_eq!(written(&admin).admin_value, 9);
+        assert_eq!(
+            written(&admin),
+            Config {
+                admin_value: 9,
+                ..initialized()
+            }
+        );
     }
 
     #[test]

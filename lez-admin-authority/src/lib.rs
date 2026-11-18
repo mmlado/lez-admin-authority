@@ -13,11 +13,12 @@
 pub use lez_authority;
 pub use lez_authority::{
     AuthorityError, AuthoritySlot, Caller, Gated, HasSlot, Holder, InitGate, Policy, Refusal, Role,
-    Wire, config_account, guard, seed,
+    Slot, Wire, config_account, guard, seed,
 };
 
 /// The admin's operations: `Init`, `Nominate`, `Accept` and `Renounce`. A client sends them
-/// with [`admin_op`], the guard runs them, the handler never sees them.
+/// with [`admin_op`], the guard runs them, the handler never sees them. The admin defines no
+/// operations of its own, so `Own` is refused (E108).
 pub use lez_authority::Op as AdminOp;
 
 pub use lez_admin_authority_macros::admin;
@@ -27,6 +28,7 @@ pub struct Admin;
 
 impl Role for Admin {
     const NAME: &'static str = "admin";
+    type Slot = AuthoritySlot;
 }
 
 /// The admin answers to nobody: the deployer or the genesis key installs it, the holder

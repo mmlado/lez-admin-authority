@@ -3736,7 +3736,7 @@ dependencies = [
 [[package]]
 name = "lez-authority"
 version = "0.2.0"
-source = "git+https://github.com/mmlado/lez-authority?tag=v0.2.0#145e09ca2f9739aaa09be5b08a9288175e2e813c"
+source = "git+https://github.com/mmlado/lez-authority?rev=749234656647e26776e9ea15797cf18b5b99d9c4#749234656647e26776e9ea15797cf18b5b99d9c4"
 dependencies = [
  "borsh",
  "lee_core",
@@ -3746,12 +3746,12 @@ dependencies = [
 [[package]]
 name = "lez-authority-macros"
 version = "0.2.0"
-source = "git+https://github.com/mmlado/lez-authority?tag=v0.2.0#145e09ca2f9739aaa09be5b08a9288175e2e813c"
+source = "git+https://github.com/mmlado/lez-authority?rev=749234656647e26776e9ea15797cf18b5b99d9c4#749234656647e26776e9ea15797cf18b5b99d9c4"
 dependencies = [
- "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+ "toml_edit 0.25.17+spec-1.1.0",
 ]
 
 [[package]]
